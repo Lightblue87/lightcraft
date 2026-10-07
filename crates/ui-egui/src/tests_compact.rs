@@ -292,3 +292,95 @@ fn keyboard_keeps_a_dialog_field_in_view() {
     let field = widget(&h, "field:renameTemplate").expect("the template field");
     assert!(field.bottom() <= content.bottom(), "the field is in view: {field:?}");
 }
+
+// ------------------------------------------------------------------ loupe gestures
+
+fn finger(id: u64, phase: egui::TouchPhase, pos: egui::Pos2) -> egui::Event {
+    egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(id), phase, pos, force: None }
+}
+
+/// Two fingers about `centre`, from `from` to `to` points apart (horizontally), in `steps` moves.
+fn pinch(h: &mut Headless, centre: egui::Pos2, from: f32, to: f32, steps: usize) {
+    let at = |d: f32| (centre - egui::vec2(d / 2.0, 0.0), centre + egui::vec2(d / 2.0, 0.0));
+    let (a, b) = at(from);
+    let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    h.input([finger(1, egui::TouchPhase::Start, a), egui::Event::PointerMoved(a), button(a, true), finger(2, egui::TouchPhase::Start, b)]);
+    h.step();
+    for i in 1..=steps {
+        let (a, b) = at(from + (to - from) * i as f32 / steps as f32);
+        h.input([finger(1, egui::TouchPhase::Move, a), egui::Event::PointerMoved(a), finger(2, egui::TouchPhase::Move, b)]);
+        h.step();
+    }
+    let (a, b) = at(to);
+    h.input([finger(2, egui::TouchPhase::End, b), finger(1, egui::TouchPhase::End, a), button(a, false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+}
+
+fn loupe(h: &Headless) -> egui::Rect {
+    widget(h, "canvas:image").expect("the loupe image")
+}
+
+#[test]
+fn pinch_zooms_the_loupe_about_the_fingers_and_back_to_fit() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "none"}));
+    let fit = loupe(&h);
+    // spread two fingers over a point left of the centre: the image point there stays put
+    let centre = fit.center() - egui::vec2(fit.width() / 4.0, 0.0);
+    let u = (centre.x - fit.left()) / fit.width();
+    pinch(&mut h, centre, 60.0, 180.0, 12);
+    assert!(matches!(h.app.ui.zoom, crate::state::Zoom::Percent(_)), "zoomed: {:?}", h.app.ui.zoom);
+    let zoomed = loupe(&h);
+    assert!(zoomed.width() > fit.width() * 2.5, "about 3× wider: {fit:?} → {zoomed:?}");
+    let u_after = (centre.x - zoomed.left()) / zoomed.width();
+    assert!((u_after - u).abs() < 0.03, "the point under the fingers stayed: {u} → {u_after}");
+    // pinching back in returns to Fit
+    pinch(&mut h, centre, 200.0, 40.0, 12);
+    assert_eq!(h.app.ui.zoom, crate::state::Zoom::Fit);
+    assert_eq!(loupe(&h), fit);
+}
+
+#[test]
+fn trackpad_pinch_over_the_loupe_zooms() {
+    let mut h = demo([1400.0, 900.0], json!({"view": "detail", "right": "none"}));
+    let fit = loupe(&h);
+    h.input([egui::Event::PointerMoved(fit.center()), egui::Event::Zoom(1.5)]);
+    h.step();
+    h.step();
+    assert!(loupe(&h).width() > fit.width() * 1.4, "{fit:?} → {:?}", loupe(&h));
+}
+
+fn swipe_by(h: &mut Headless, delta: egui::Vec2) {
+    let start = loupe(h).center();
+    touch_drag(h, start, start + delta, 10);
+}
+
+#[test]
+fn touch_swipe_at_fit_steps_through_the_photos() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "none"}));
+    let first = h.app.session.active();
+    swipe_by(&mut h, egui::vec2(-160.0, 6.0));
+    let second = h.app.session.active();
+    assert_ne!(second, first, "a swipe left shows the next photo");
+    swipe_by(&mut h, egui::vec2(160.0, -4.0));
+    assert_eq!(h.app.session.active(), first, "a swipe right goes back");
+    // too short, or mostly vertical: no change
+    swipe_by(&mut h, egui::vec2(-30.0, 0.0));
+    swipe_by(&mut h, egui::vec2(-90.0, 160.0));
+    assert_eq!(h.app.session.active(), first);
+    // the photo is back in place once the finger lifts
+    assert_eq!(loupe(&h).center().x, h.app.canvas_rect.expect("canvas").center().x);
+}
+
+#[test]
+fn mouse_drag_at_fit_doesnt_change_the_photo() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "none"}));
+    let first = h.app.session.active();
+    let c = loupe(&h).center();
+    let r = h.request("ui.drag", json!({"x": c.x, "y": c.y, "toX": c.x - 160.0, "toY": c.y, "steps": 10}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..4 {
+        h.step();
+    }
+    assert_eq!(h.app.session.active(), first);
+}

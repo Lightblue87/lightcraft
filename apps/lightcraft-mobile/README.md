@@ -42,6 +42,11 @@ browsers:
 - **My Photos:** a full-width drawer that closes when you pick a source.
 - **Grid:** about three thumbnails across.
 - **Bottom bar:** view modes, Sort, Filmstrip and an Edit toggle.
+- **Loupe gestures:** pinch zooms about the fingers, from Fit to 1600%, and pinching back in
+  snaps to Fit. Moving both fingers pans. At Fit, a one-finger swipe sideways drags the photo
+  along, and letting go past a sixth of the screen shows the next or previous photo. When
+  zoomed in, one finger pans as before. A trackpad pinch (or ⌘/Ctrl-scroll) over the loupe
+  zooms on the desktop too.
 - **Sliders by touch:** a drag that starts sideways adjusts the slider by the distance moved;
   one that starts up or down scrolls the panel, even when it begins on a slider's track. A tap
   doesn't change the value, and double-tap resets. Mouse and trackpad work as on the desktop.
@@ -74,8 +79,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   otherwise), so the layout follows the keyboard a moment late. Typing goes through
   NativeActivity's key events, which works for plain text. Composing input (CJK, autocorrect,
   swipe typing) is untested and probably doesn't work. Full IME support needs GameActivity.
-- **Touch.** There's no pinch zoom, some controls appear only on hover, and the desktop
-  layout's hit targets are small. The tone curve and color wheels still take every drag that
+- **Touch.** Some controls appear only on hover, and the desktop layout's hit targets are
+  small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
+  beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
 - **No pickers, sharing or memory budget yet.** All `Services` except export writing are
   `None`, so nothing can be imported beyond the demo photos.

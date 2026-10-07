@@ -1,7 +1,7 @@
 //! The Detail (loupe) view: the developed photo, before/after, zoom & pan, the filmstrip, and the
 //! on-canvas tools (crop, brush/gradient masks, remove spots, white-balance picker).
 
-use egui::{Align2, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
+use egui::{Align2, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 use lightcraft_catalog::PhotoId;
 use lightcraft_develop::{DevelopSettings, MaskShape};
 use lightcraft_geom::{Affine, Point};
@@ -185,6 +185,20 @@ pub(crate) fn navigate_gesture(app: &mut LightcraftApp, ui: &mut egui::Ui, resp:
     ui.input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
     ui.ctx().request_repaint();
     true
+}
+
+/// How far a touch swipe has dragged the photo sideways (0 when none is in progress).
+fn swipe_offset(ctx: &egui::Context) -> f32 {
+    ctx.data(|d| d.get_temp::<f32>(egui::Id::new("loupe-swipe"))).unwrap_or(0.0)
+}
+
+/// Drop a swipe in progress (a pinch or two-finger pan took over).
+fn cancel_swipe(ctx: &egui::Context) {
+    let id = egui::Id::new("loupe-swipe");
+    ctx.data_mut(|d| {
+        d.remove::<f32>(id);
+        d.remove::<Vec2>(id.with("moved"));
+    });
 }
 
 /// The largest texture the GPU behind `ctx` takes (egui reports it; 2048 until it does, the
@@ -377,13 +391,15 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // tool's overlays need the frame's own geometry.
     let display_aspect = visible_texture_aspect.filter(|a| !crop_tool && (a / aspect - 1.0).abs() > 0.02).unwrap_or(aspect);
     let resp = ui.interact(canvas, egui::Id::new("loupe"), Sense::click_and_drag());
-    let mut target_rect = fit_rect(main_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan);
+    // a touch swipe to the next / previous photo drags the photo along
+    let mut target_rect = fit_rect(main_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan).translate(vec2(swipe_offset(ui.ctx()), 0.0));
     let mut img_rect = animated_rect(ui.ctx(), &mut app.ui.zoom_anim, target_rect);
     let mut navigating = false;
     for &view_area in &areas {
         let view_img = if view_area == main_area { img_rect } else { fit_rect(view_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan) };
         if navigate_gesture(app, ui, &resp, view_area, view_img, native) {
             navigating = true;
+            cancel_swipe(ui.ctx());
             target_rect = fit_rect(main_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan);
             img_rect = target_rect;
             break;
@@ -1175,6 +1191,9 @@ fn general_interaction(
     }
     // click toggles Fit ↔ the chosen click-zoom ratio at the clicked point; drag pans when zoomed
     let zoomed = img.width() > canvas.width() + 1.0 || img.height() > canvas.height() + 1.0;
+    if !zoomed && swipe(app, ui, resp, canvas) {
+        return;
+    }
     if resp.double_clicked() || (resp.clicked() && !zoomed) {
         if let Some(q) = resp.interact_pointer_pos() {
             let u = ((q.x - img.left()) / img.width()).clamp(0.0, 1.0);
@@ -1191,6 +1210,33 @@ fn general_interaction(
         pan_image(app, canvas, img, resp.drag_delta());
     }
     let _ = (native, aspect);
+}
+
+/// One finger dragged sideways across the photo at Fit: the photo follows it, and letting go past
+/// a sixth of the canvas (at least 60 pt) shows the next or previous photo. Touch only (a mouse
+/// drag at Fit stays a no-op). True while a swipe is in progress.
+fn swipe(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Response, canvas: Rect) -> bool {
+    let id = egui::Id::new("loupe-swipe");
+    let moved_id = id.with("moved");
+    if resp.drag_stopped() {
+        // the pointer may be gone already: decide from the movement stored while dragging
+        let Some(moved) = ui.ctx().data_mut(|d| d.remove_temp::<Vec2>(moved_id)) else { return false };
+        ui.ctx().data_mut(|d| d.remove::<f32>(id));
+        if moved.x.abs() > (canvas.width() / 6.0).max(60.0) && moved.x.abs() > moved.y.abs() * 1.5 {
+            let _ = app.run(if moved.x < 0.0 { "library.next" } else { "library.previous" }, json!({}));
+        }
+        return true;
+    }
+    let swiping = ui.ctx().data(|d| d.get_temp::<Vec2>(moved_id)).is_some();
+    if !(resp.drag_started() && ui.input(|i| i.any_touches()) || resp.dragged() && swiping) {
+        return false;
+    }
+    let Some(moved) = ui.input(|i| i.pointer.interact_pos().zip(i.pointer.press_origin()).map(|(p, o)| p - o)) else { return swiping };
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(moved_id, moved);
+        d.insert_temp(id, if moved.x.abs() > moved.y.abs() { moved.x } else { 0.0 });
+    });
+    true
 }
 
 // ------------------------------------------------------------------------ crop
