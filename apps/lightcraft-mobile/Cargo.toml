@@ -1,0 +1,39 @@
+[package]
+name = "lightcraft-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "LightCraft on iOS/iPadOS and Android: the egui UI in a thin native shell (spike; see README.md)"
+
+[lints]
+workspace = true
+
+# iOS: the `lightcraft-ios` binary, wrapped in an .app by scripts/ios-sim.sh.
+# Android: the cdylib, loaded by NativeActivity (android/AndroidManifest.xml, scripts/android-apk.sh).
+[lib]
+name = "lightcraft_mobile"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "lightcraft-ios"
+path = "src/main.rs"
+
+[dependencies]
+lightcraft-engine = { workspace = true }
+lightcraft-ui-egui = { workspace = true }
+lightcraft-codecs = { workspace = true }
+lightcraft-raster = { workspace = true }
+log = { workspace = true }
+
+# Desktop and wasm builds of the workspace compile this crate empty (winit needs x11/wayland
+# features there, which a mobile shell has no use for).
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
+egui = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { workspace = true, features = ["android-native-activity"] }
+winit = { version = "0.30", features = ["android-native-activity"] }
+# GL for the window: emulators and some devices fail to configure a Vulkan surface
+wgpu = { workspace = true, features = ["gles"] }

@@ -1,0 +1,155 @@
+# LightCraft → iOS / iPadOS / Android: porting assessment
+
+Assessed at upstream `549cbe7` (2026-10-07); the spike was built against that commit. The spike is now `apps/lightcraft-mobile` (see its README).
+
+## Verdict
+
+The engine is already portable. The cost is almost entirely **UX** (touch and phone layouts) plus a
+**thin native shell** per OS.
+
+- ~106k LOC of pure Rust. `unsafe` is denied workspace-wide. There's no C, no `std::arch`
+  SIMD, and GPU compute runs on wgpu/WGSL.
+- `lightcraft-engine`, `-ui-egui`, `-gpu` and `-catalog` `cargo check` cleanly for
+  `aarch64-apple-ios` and `aarch64-linux-android` with **zero code changes**. Only the
+  desktop shell fails, because `rfd` file dialogs have no mobile backend.
+- **The unmodified UI and engine run on iPad, iPhone and Android tablet** in a ~90-line shell
+  (screens below). Live develop works by touch, and the on-disk journal survives a hard kill.
+
+## What the spike proved
+
+| Check | iOS (Simulator 26.5) | Android (emulator, API 35 tablet) |
+|---|---|---|
+| Core crates compile | ✅ no changes | ✅ no changes |
+| Links as app | ✅ 46 MB debug binary | ✅ 44 MB release `.so`, NativeActivity |
+| Library on disk in sandbox | ✅ 24 demo photos, opened in 37 ms | ✅ `internal_data_path()` |
+| GPU compute | ✅ Metal (`buffers ≤ 256 MiB`) | not verified (no logger wired) |
+| Window renderer | ✅ Metal, **after** requesting adapter limits | ✅ **GL only**: Vulkan panicked in `Surface::configure` |
+| Touch slider drag → live render + histogram | ✅ | ✅ |
+| Kill −9 then relaunch keeps the edit | ✅ (1 journal record replayed) | not tested |
+| iOS 27 runtime | ❌ **crash at launch**: UIKit requires UIScene lifecycle, which winit 0.30.13 doesn't adopt | — |
+| Phone layout | ❌ photo squeezed to ~90 pt, top bar under the Dynamic Island | — |
+| Vertical swipe scrolls the edit panel | ❌ didn't scroll | not tested |
+
+### Blockers found by running it (not visible from reading code)
+
+1. **iOS 27 + winit 0.30 = launch crash** (`_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`).
+   Fix by upgrading or patching winit to a version that adopts UIScene, or by a custom UIKit host
+   that embeds an egui-wgpu view. It's the single biggest iOS risk, and nothing upstream has
+   been verified to fix it yet.
+2. **eframe's default wgpu limits are rejected** by the Simulator's Metal adapter
+   (`max_inter_stage_shader_variables 16 > 15`). Fixed in the spike by setting `required_limits = adapter.limits()`.
+3. **Android emulator Vulkan surface fails.** The window has to be able to fall back to GL, but
+   the workspace builds wgpu without `gles` (`Cargo.toml`, "no GL"). Expect the same on some
+   real low-end and old devices.
+
+## Code-level findings (from three parallel audits)
+
+**Platform coupling (small).**
+- Every gate is `wasm32` vs native, so mobile takes the desktop paths: threads, `std::fs`,
+  fsync journal, wgpu.
+- `memory::total_ram()` returns `None` on iOS and Android, which sets a fixed 1.5 GiB
+  budget. That's too high for jetsam.
+- `library::default_dir()` uses `$HOME/Pictures`: wrong on iOS, `None` on Android.
+- `sysmem` pressure relief is gated to `macos`, not `ios`.
+- `devices.rs` (`/Volumes` DCIM scan), `open`/`xdg-open`, the control TCP server and MCP
+  are all irrelevant on mobile.
+
+**Storage model (medium).**
+- The catalog stores **absolute paths** and reads originals with `std::fs::read`.
+- That's incompatible with PHPhotoLibrary ids, Android `content://` URIs, iOS
+  container-path changes and security-scoped URLs.
+- **The web build already solved this:** opaque ids, a copy-into-library import via async
+  pickers, and the `Store` trait. A mobile host can reuse that pattern, plus the
+  `FileLoader`/`FileProbe` byte hooks on `MediaCache`.
+- XMP sidecars next to originals, "move" import and folder watching need to be off on
+  mobile.
+
+**Memory (medium).**
+- Full-res sources are Rgb32f (24 MP ≈ 288 MB; 61 MP ≈ 730 MB).
+- The decode gate lets one oversize job bypass the budget.
+- The thumbnail disk cache is 2 GiB.
+- GPU buffers are whole images, with no tiling. On Android GPUs with 128–256 MB storage
+  limits, **24 MP exports fall back to CPU**.
+- Needs explicit budgets, OS memory-warning hooks, and tiled GPU export.
+
+**Lifecycle (small).**
+- Per-command fsync journaling is already crash-safe (verified).
+- Still to add on suspend: `end_interaction`, saving `view.json`, pausing GPU work.
+  iOS rejects background GPU submits, which would latch the process to CPU.
+
+**UI (large: the dominant cost).**
+- Zero touch code: no pinch (`zoom_delta`) and no multi-touch.
+- 69 hover checks, several of them functional: section eye toggles, the brush-size ring,
+  hover-preview of presets.
+- 23 context menus. About 130 shortcuts, though nearly all actions are also reachable from
+  menus or buttons.
+- Hit targets are 10–30 pt (crop handles 12 pt, mask grips 10 pt) vs 44 pt guidance.
+- Grid cells and full-width sliders use `click_and_drag` inside ScrollAreas, so drags fight
+  scrolling.
+- Fixed panel widths (right panel 250–520, min photo 360) with no breakpoints. The desktop
+  window minimum is 900×560.
+- No IME, soft-keyboard or safe-area handling.
+- **The good news:** a single `MenuNode` model already renders as a full in-window menu,
+  and host OS features go through an injectable `Services` struct.
+
+**Engine boundary.**
+- Writes go through 232 JSON commands (stable ids). Reads touch `Session` directly
+  (~230 field accesses from the UI), and there's no FFI.
+- A native SwiftUI/Compose UI is therefore possible but needs a uniffi façade plus an
+  extracted "app-core" layer (render scheduling, import, export).
+
+**Project velocity.**
+- 540 commits in 3 days (history starts 2026-10-05), 92% by one author, with an
+  agent-driven workflow (AGENTS.md / CLAUDE.md).
+- A private fork of `ui-egui` would rot within days. Mobile UI changes should go
+  **upstream** behind a layout mode.
+
+## Effort estimate (one experienced Rust dev; person-weeks)
+
+### Path A: keep egui and make it touch-first (recommended)
+
+| Work item | iPad + Android tablet | + phones |
+|---|---|---|
+| Shells: Xcode wrapper with UIScene fix, Gradle/GameActivity, signing, icons, safe areas | 4–6 | — |
+| Services: PHPicker/SAF import (web's async pattern), share-sheet export, `open_url` | 2–3 | — |
+| Storage: opaque source ids, copy-in import, sidecars/move/devices off, caches → Caches/ | 1–2 | — |
+| Lifecycle and memory: suspend hooks, budgets, memory warnings, GL fallback | 2–3 | — |
+| Touch pass: drag vs scroll, pinch/pan, long-press, 44 pt targets, hover replacements, keyboard/IME | 6–10 | — |
+| Phone layout: single column, bottom-sheet panels, tab bar, modal tools, full-screen dialogs | — | 10–16 |
+| GPU tiling for exports on 128–256 MB devices | 2–3 | — |
+| CI (`cargo check` for both targets), device-farm QA | 1–2 | 1–2 |
+| **Total** | **18–29 wk (≈4–7 months)** | **+11–18 wk** |
+
+All three platforms (iPad, iPhone, Android tablets and phones) come to **≈ 7–11 person-months**.
+
+### Path B: native SwiftUI + Jetpack Compose over the Rust engine
+
+uniffi façade 4–6, app-core extraction 5–7, SwiftUI app 18–24, Compose app 14–20, for a total
+of **≈ 45–60 wk (11–14 person-months)**. The result feels native, but every feature has to be
+built twice and kept in sync with a very fast-moving upstream.
+
+### Path 0: wrap the existing WASM build (days)
+
+Load `apps/lightcraft-web` in WKWebView or a TWA. It gets you a demo, not a product: no
+GPU compute in the browser build, single-threaded wasm workers, OPFS storage limits, and the
+same desktop UI.
+
+## Recommendation
+
+1. Go **iPad-first with Path A**. The spike shows the desktop UI is already close to usable
+   on a 13" iPad, and an Apple Pencil maps well onto the brush and mask tools.
+2. Resolve the **winit/UIScene** issue first. It's the only hard blocker found.
+3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
+   That benefits the web build on tablets too.
+4. Treat phones as a separate milestone that needs a real phone layout.
+
+## Spike artifacts
+
+Everything is in `apps/lightcraft-mobile`. See its `README.md`.
+
+- `src/lib.rs`: the shared shell (eframe plus `LightcraftApp`). It holds `ios_main`, plus the
+  `android_main` NativeActivity entry point. On Android the window uses GL unless
+  `/data/local/tmp/lc_vulkan` exists.
+- `scripts/ios-sim.sh`, `scripts/android-apk.sh`: build, bundle and run. The APK is packaged
+  with `aapt2`, `zipalign` and `apksigner`, without Gradle.
+- `docs/screens/`: iPad, iPhone and Android tablet screenshots.
