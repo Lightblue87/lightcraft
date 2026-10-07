@@ -140,6 +140,14 @@ pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
                     if cancelled {
                         m += " · cancelled";
                     }
+                    // mobile: offer what was written in the share sheet
+                    let paths: Vec<String> = files.iter().filter_map(|f| f.get("path").and_then(Value::as_str)).map(str::to_string).collect();
+                    if !cancelled
+                        && !paths.is_empty()
+                        && let Some(share) = app.services.share.as_mut()
+                    {
+                        share(&paths);
+                    }
                     app.last_export_result = Some(json!({"files": files, "cancelled": cancelled}));
                     m
                 }

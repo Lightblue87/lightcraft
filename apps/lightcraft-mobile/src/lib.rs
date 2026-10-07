@@ -14,6 +14,8 @@ mod android_jni;
 mod ios_picker;
 #[cfg(target_os = "ios")]
 mod ios_scene;
+#[cfg(target_os = "ios")]
+mod ios_share;
 
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
@@ -155,8 +157,20 @@ impl eframe::App for App {
     }
 }
 
-fn services() -> Services {
+/// `export_dir`: where exports go by default (next to the library, inside the sandbox; on iOS
+/// `Documents/`, so they show in the Files app too).
+fn services(export_dir: String) -> Services {
     Services {
+        export_dir: Some(export_dir),
+        // a finished export opens the share sheet (AirDrop, Messages, Save to Photos, other apps)
+        #[cfg(target_os = "ios")]
+        share: Some(Box::new(ios_share::share)),
+        #[cfg(target_os = "android")]
+        share: Some(Box::new(|paths: &[String]| {
+            if let Some(app) = ANDROID_APP.get() {
+                android_jni::share(app, paths);
+            }
+        })),
         // atomic (temp file + sync + rename), inside the sandbox
         write_shared: Some(std::sync::Arc::new(lightcraft_engine::export::write_file)),
         write: Some(Box::new(lightcraft_engine::export::write_file)),
@@ -231,6 +245,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 ios_scene::set_context(&_cc.egui_ctx);
                 ios_picker::init(library_dir.join("Picked"), _cc.egui_ctx.clone());
             }
+            let export_dir = library_dir.with_file_name("LightCraft Exports").to_string_lossy().to_string();
             let mut s = Session::new().with_fs().with_system_clock();
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {
@@ -240,7 +255,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 }
                 Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
             }
-            Ok(Box::new(App::new(LightcraftApp::new(s, services()))))
+            Ok(Box::new(App::new(LightcraftApp::new(s, services(export_dir)))))
         }),
     )
 }

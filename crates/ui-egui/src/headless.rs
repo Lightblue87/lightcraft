@@ -1819,6 +1819,36 @@ mod tests {
         assert!(last["files"][0]["width"].as_u64().is_some_and(|w| w <= 64));
     }
 
+    /// A mobile host's share sheet gets the written files when a UI export finishes, and the
+    /// Export dialog starts in the host's export folder.
+    #[test]
+    fn finished_export_is_offered_to_the_share_sheet() {
+        let mut h = demo([1200.0, 900.0]);
+        let t = Duration::from_secs(10);
+        h.app.services.write_shared = Some(std::sync::Arc::new(|_: &str, _: &[u8]| Ok(())));
+        h.app.services.export_dir = Some("/sandbox/Exports".into());
+        let shared = std::rc::Rc::new(std::cell::RefCell::new(Vec::<Vec<String>>::new()));
+        let s = shared.clone();
+        h.app.services.share = Some(Box::new(move |paths: &[String]| s.borrow_mut().push(paths.to_vec())));
+        let ids: Vec<u64> = h.app.session.visible_cloned().iter().take(2).map(|p| p.0).collect();
+        h.request("engine.execute", json!({"command": "library.select", "params": {"ids": ids}}), t);
+        h.request("engine.execute", json!({"command": "dialog.export", "params": {}}), t);
+        h.settle(SETTLE);
+        let Some(crate::state::Dialog::Export { full_size, resize, dir, .. }) = &mut h.app.ui.dialog else { panic!("no export dialog") };
+        assert_eq!(dir, "/sandbox/Exports");
+        *full_size = false;
+        *resize = lightcraft_engine::export::Resize::long_edge(64);
+        assert_eq!(h.request("ui.dialog.confirm", json!({}), t)["ok"], true);
+        let t0 = Instant::now();
+        while h.app.export.is_some() && t0.elapsed() < Duration::from_secs(60) {
+            h.step();
+        }
+        let shared = shared.borrow();
+        assert_eq!(shared.len(), 1, "shared once: {shared:?}");
+        assert_eq!(shared[0].len(), 2);
+        assert!(shared[0].iter().all(|p| p.starts_with("/sandbox/Exports/")), "{shared:?}");
+    }
+
     /// Dragging grid photos onto an album row adds them to the album.
     #[test]
     fn drag_photos_onto_an_album() {

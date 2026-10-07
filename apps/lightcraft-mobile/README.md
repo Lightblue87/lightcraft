@@ -58,6 +58,14 @@ browsers:
   subclass of NativeActivity (`android/java/…/LightCraftActivity.java`), compiled by
   `scripts/android-apk.sh` with `javac` and `d8`, because NativeActivity can't receive an
   activity result.
+- **Export and share:** exports go to a folder next to the library (`Documents/LightCraft
+  Exports` on iOS, so they show in the Files app; the app's private files on Android). When an
+  export from the Export dialog finishes, the share sheet opens with the files: AirDrop, Save
+  to Photos, Messages and other apps. On iOS that's UIActivityViewController
+  (`src/ios_share.rs`, anchored as a popover on iPad). On Android it's an `ACTION_SEND` chooser
+  over `content://` URIs from a small read-only `FilesProvider` (androidx's FileProvider
+  without androidx). `ui-egui` gained two optional host services for this, `export_dir` and
+  `share`.
 - **Soft keyboard:** the layout moves up above the keyboard (bottom bar, sheet, dialogs), and a
   focused text field it would cover is scrolled into view. On iOS the shell's scene delegate
   reads the keyboard frame from UIKit. On Android the shell compares the decor view's
@@ -74,9 +82,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 |---|---|---|---|---|---|
 | iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) | ![export](docs/screens/phone-export.jpg) | ![keyboard](docs/screens/phone-keyboard.jpg) |
 
-| Photo picker (iOS) | Import review (iOS) | Import review (Android) |
-|---|---|---|
-| ![picker](docs/screens/phone-picker.jpg) | ![import](docs/screens/phone-import.jpg) | ![android import](docs/screens/android-import.jpg) |
+| Photo picker (iOS) | Import review (iOS) | Import review (Android) | Share sheet (iOS) | Share sheet (Android) |
+|---|---|---|---|---|
+| ![picker](docs/screens/phone-picker.jpg) | ![import](docs/screens/phone-import.jpg) | ![android import](docs/screens/android-import.jpg) | ![share](docs/screens/phone-share.jpg) | ![android share](docs/screens/android-share.jpg) |
 
 ## Known problems
 
@@ -95,8 +103,11 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
-- **No sharing or memory budget yet.** Exports are written inside the app's sandbox, with no
-  share sheet, and the engine still budgets memory like a desktop.
+- **No mobile memory budget yet.** The engine still budgets memory like a desktop.
+- **Imported photos break when the app is reinstalled (iOS).** The catalog stores absolute
+  paths, and iOS gives a reinstalled or updated app a new container path, so photos imported
+  into `Picked/` show as missing afterwards. The library itself and the demo photos are
+  unaffected. Not fixed yet.
 - **Import caveats.** Picked photos are copied into `<library>/Picked`, so they take up space
   twice. On Android the picker hides original file names, so photos arrive named after their
   media IDs, and HEIC/HEIF is converted to JPEG on the Java side (losing EXIF). Raw files from

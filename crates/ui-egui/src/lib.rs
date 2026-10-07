@@ -123,6 +123,8 @@ pub type OpenWithFn = Box<dyn FnMut(&str, &str) -> Result<(), String>>;
 /// Something the host does with the session (web: back up or restore the library in browser
 /// storage); the work may finish asynchronously.
 pub type HostAction = Box<dyn FnMut(&mut Session) -> Result<Value, String>>;
+/// Hand finished files to the platform's share sheet (paths).
+pub type ShareFn = Box<dyn FnMut(&[String])>;
 
 /// Platform services injected by the host app (desktop or web).
 #[derive(Default)]
@@ -177,6 +179,12 @@ pub struct Services {
     pub backup_library: Option<HostAction>,
     /// File ▸ Restore Library from Backup… (web only; keeps the current library).
     pub restore_library: Option<HostAction>,
+    /// The default export folder (mobile: inside the app's sandbox); else
+    /// `~/Pictures/LightCraft Exports`.
+    pub export_dir: Option<String>,
+    /// Offer the files of a finished export from the Export dialog (or Export with Preset /
+    /// Previous) in the platform's share sheet (mobile hosts).
+    pub share: Option<ShareFn>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

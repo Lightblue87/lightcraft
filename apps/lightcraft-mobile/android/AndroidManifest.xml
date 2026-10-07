@@ -9,5 +9,8 @@
       <meta-data android:name="android.app.lib_name" android:value="lightcraft_mobile"/>
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
+    <provider android:name="ai.storyteller.lightcraft.mobile.FilesProvider"
+              android:authorities="ai.storyteller.lightcraft.mobile.files"
+              android:exported="false" android:grantUriPermissions="true"/>
   </application>
 </manifest>

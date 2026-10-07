@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * NativeActivity plus the photo picker, which NativeActivity can't host: it never sees
+ * NativeActivity plus the photo picker and the share sheet. NativeActivity can't host the picker: it never sees
  * onActivityResult. The Rust shell calls {@link #pickPhotos} over JNI and polls
  * {@link #takePicked}; each chosen photo is copied into {@code dir} on a background thread first.
  * HEIC/HEIF (which LightCraft can't decode yet) is converted to JPEG.
@@ -48,6 +48,38 @@ public class LightCraftActivity extends NativeActivity {
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             }
             startActivityForResult(intent, PICK);
+            }
+        });
+    }
+
+    /** Offer exported files (newline-separated paths under the data directory) in the share sheet. */
+    public void share(String joined) {
+        final ArrayList<Uri> uris = new ArrayList<>();
+        String type = null;
+        for (String path : joined.split("\n")) {
+            if (path.isEmpty()) continue;
+            Uri uri = FilesProvider.uriFor(new File(path));
+            uris.add(uri);
+            String t = getContentResolver().getType(uri);
+            type = type == null || type.equals(t) ? t : "image/*";
+        }
+        if (uris.isEmpty()) return;
+        final Intent send = new Intent(uris.size() == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
+        send.setType(type);
+        if (uris.size() == 1) {
+            send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+        } else {
+            send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        }
+        // the grant covers every URI in the clip data
+        ClipData clip = ClipData.newRawUri(null, uris.get(0));
+        for (int i = 1; i < uris.size(); i++) clip.addItem(new ClipData.Item(uris.get(i)));
+        send.setClipData(clip);
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                startActivity(Intent.createChooser(send, null));
             }
         });
     }

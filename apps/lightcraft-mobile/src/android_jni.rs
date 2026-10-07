@@ -88,3 +88,16 @@ pub fn take_picked(app: &AndroidApp) -> Option<Vec<String>> {
         None
     })
 }
+
+/// Offer `paths` (files under the app's data directory) in the system share sheet.
+pub fn share(app: &AndroidApp, paths: &[String]) {
+    let r = with_activity(app, |env, activity| {
+        // one string, newline-separated: simpler than building a String[] over JNI
+        let joined = env.new_string(paths.join("\n"))?;
+        env.call_method(activity, jni_str!("share"), jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&joined)])?;
+        Ok(())
+    });
+    if let Err(e) = r {
+        log::warn!("share: {e}");
+    }
+}
