@@ -152,20 +152,23 @@ pub fn register_wake(app: &AndroidApp, ctx: &egui::Context) {
 }
 
 /// What the soft keyboard is told about the focused text field: its text and selection (char
-/// indices, as egui counts them; a password field's text comes masked), and what it's for.
+/// indices, as egui counts them; a password field's text comes masked), and what it's for:
+/// egui's IME purpose, and whether it's a number (a drag value or slider being typed into).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Field {
     pub text: String,
     pub selection: (usize, usize),
     pub purpose: egui::IMEPurpose,
+    pub numeric: bool,
 }
 
-/// `TextInput.java`'s code for `purpose`.
-fn purpose_code(purpose: egui::IMEPurpose) -> i32 {
-    match purpose {
-        egui::IMEPurpose::Normal => 0,
+/// `TextInput.java`'s code for what `field` is for (a password stays a password).
+fn purpose_code(field: &Field) -> i32 {
+    match field.purpose {
         egui::IMEPurpose::Password => 1,
         egui::IMEPurpose::Terminal => 2,
+        egui::IMEPurpose::Normal if field.numeric => 3,
+        egui::IMEPurpose::Normal => 0,
     }
 }
 
@@ -176,7 +179,7 @@ pub fn start_text_input(app: &AndroidApp, field: &Field) {
     let r = with_activity(app, |env, activity| {
         let text = env.new_string(&field.text)?;
         let (a, b) = (field.selection.0.min(i32::MAX as usize) as i32, field.selection.1.min(i32::MAX as usize) as i32);
-        let args = [JValue::Object(&text), JValue::Int(a), JValue::Int(b), JValue::Int(purpose_code(field.purpose))];
+        let args = [JValue::Object(&text), JValue::Int(a), JValue::Int(b), JValue::Int(purpose_code(field))];
         env.call_method(activity, jni_str!("startTextInput"), jni_sig!("(Ljava/lang/String;III)V"), &args).map(drop)
     });
     if let Err(e) = r {

@@ -120,7 +120,11 @@ browsers:
   password type, so the keyboard shows no suggestions, learns nothing and switches to a Latin
   layout, and its copy only ever holds egui's masked text; a terminal-style field gets no
   suggestions. (LightCraft has no password fields today; this was checked with the search field
-  made one in a local build.) Korean (Gboard 2-set) composes
+  made one in a local build.) Numbers typed into egui drag values (capture-time shift and time
+  zone, rename "Start at", the smart-collection rules) get the number pad with a minus sign and a
+  decimal point: a drag value reports itself when clicked, which focuses the text field it turns
+  into, so the shell remembers which focus came with it. That field starts with an empty copy
+  (it reports its text only once edited), which the first edit corrects. Korean (Gboard 2-set) composes
   syllable by syllable, and backspace decomposes them. Text in scripts the bundled fonts lack
   shows in the system's Noto Sans CJK, memory-mapped and picked for the device's locale.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll

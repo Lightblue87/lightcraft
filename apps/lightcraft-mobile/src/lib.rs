@@ -41,6 +41,10 @@ struct App {
     text_input: Option<egui::Id>,
     #[cfg(target_os = "android")]
     field: android_jni::Field,
+    /// The widget that had focus when a drag value or slider last reported itself (a click on
+    /// one focuses its text field before that field exists).
+    #[cfg(target_os = "android")]
+    numeric_focus: Option<egui::Id>,
     /// Until when (egui time, s) the insets are read often after the keyboard went away: it
     /// slides out after the last frame, and nothing else would draw one.
     #[cfg(target_os = "android")]
@@ -62,6 +66,8 @@ impl App {
             text_input: None,
             #[cfg(target_os = "android")]
             field: android_jni::Field::default(),
+            #[cfg(target_os = "android")]
+            numeric_focus: None,
             #[cfg(target_os = "android")]
             insets_settle: f64::NEG_INFINITY,
         }
@@ -139,8 +145,13 @@ impl App {
                 .and_then(|s| s.cursor.char_range())
                 .map(|r| r.as_sorted_char_range())
                 .map_or((n, n), |r| (r.start.0.min(n), r.end.0.min(n)));
-            android_jni::Field { text, selection, purpose }
+            android_jni::Field { text, selection, purpose, numeric: false }
         };
+        // a drag value (or slider) reports itself when clicked, which focuses the text field it
+        // turns into from the next frame on: remember which focus came with it
+        if ctx.output(|o| o.events.iter().any(|e| matches!(e.widget_info().typ, egui::WidgetType::DragValue | egui::WidgetType::Slider))) {
+            self.numeric_focus = ctx.memory(|m| m.focused());
+        }
         // the same field, now for another purpose (e.g. a password shown or hidden): start afresh
         if wanted == self.text_input && purpose != self.field.purpose {
             self.text_input = None;
@@ -148,6 +159,7 @@ impl App {
         if wanted == self.text_input {
             if let Some(id) = wanted {
                 let f = field(id, reported.unwrap_or_else(|| self.field.text.clone()));
+                let f = android_jni::Field { numeric: self.field.numeric, ..f };
                 if f != self.field {
                     android_jni::sync_text_input(android, &f);
                     self.field = f;
@@ -159,6 +171,8 @@ impl App {
             Some(id) => {
                 // (a field that reported nothing yet starts empty; its first report syncs)
                 self.field = field(id, reported.unwrap_or_default());
+                // a drag value (or slider) being typed into: the keyboard is the number pad
+                self.field.numeric = self.numeric_focus == Some(id);
                 android_jni::start_text_input(android, &self.field);
             }
             None => {

@@ -48,10 +48,13 @@ final class TextInput extends View {
     /** The field's text and selection (UTF-16) the next input connection starts from. */
     private String text = "";
     private int selStart, selEnd;
-    /** What the field is for: {@link #NORMAL}, {@link #PASSWORD} or {@link #TERMINAL} (egui's IME purpose). */
+    /**
+     * What the field is for: {@link #NORMAL}, {@link #PASSWORD}, {@link #TERMINAL} (egui's IME
+     * purpose) or {@link #NUMBER} (a number being typed into an egui drag value).
+     */
     private int purpose;
 
-    static final int NORMAL = 0, PASSWORD = 1, TERMINAL = 2;
+    static final int NORMAL = 0, PASSWORD = 1, TERMINAL = 2, NUMBER = 3;
     private Connection connection;
 
     TextInput(Context context, Wake wake) {
@@ -154,6 +157,10 @@ final class TextInput extends View {
             case TERMINAL:
                 // typed as is: no suggestions or corrections
                 info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                break;
+            case NUMBER:
+                // the number pad, with a minus sign and a decimal point (drag values can be both)
+                info.inputType = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL;
                 break;
             default:
                 // plain text with suggestions
