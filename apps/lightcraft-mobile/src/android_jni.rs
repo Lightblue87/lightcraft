@@ -101,3 +101,23 @@ pub fn share(app: &AndroidApp, paths: &[String]) {
         log::warn!("share: {e}");
     }
 }
+
+/// The strongest `onTrimMemory` level since the last call (0: none).
+pub fn take_trim_level(app: &AndroidApp) -> i32 {
+    with_activity(app, |env, activity| env.call_method(activity, jni_str!("takeTrimLevel"), jni_sig!("()I"), &[])?.i()).unwrap_or(0)
+}
+
+/// Write one line to logcat (tag `LightCraft`).
+pub fn logcat(level: log::Level, text: &str) {
+    let prio = match level {
+        log::Level::Error => ndk_sys::android_LogPriority::ANDROID_LOG_ERROR,
+        log::Level::Warn => ndk_sys::android_LogPriority::ANDROID_LOG_WARN,
+        log::Level::Info => ndk_sys::android_LogPriority::ANDROID_LOG_INFO,
+        _ => ndk_sys::android_LogPriority::ANDROID_LOG_DEBUG,
+    };
+    let Ok(text) = std::ffi::CString::new(text.replace('\0', " ")) else { return };
+    // SAFETY: liblog call with NUL-terminated strings that outlive it
+    unsafe {
+        ndk_sys::__android_log_write(prio.0 as std::ffi::c_int, c"LightCraft".as_ptr(), text.as_ptr());
+    }
+}

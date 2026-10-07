@@ -16,6 +16,7 @@ mod ios_picker;
 mod ios_scene;
 #[cfg(target_os = "ios")]
 mod ios_share;
+mod memory;
 
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
@@ -126,6 +127,7 @@ impl eframe::App for App {
                 log::warn!("import: {e}");
             }
         }
+        memory::poll(&mut self.app.session);
         self.app.logic(ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -196,7 +198,8 @@ fn services(export_dir: String) -> Services {
     }
 }
 
-/// Logs to stderr (Xcode / `simctl launch --console-pty`). Android sends stderr nowhere: see README.
+/// Logs to stderr on iOS (Xcode / `simctl launch --console-pty`), to logcat on Android (tag
+/// `LightCraft`; Android discards stderr).
 struct StderrLog;
 
 impl log::Log for StderrLog {
@@ -205,6 +208,9 @@ impl log::Log for StderrLog {
     }
     fn log(&self, r: &log::Record) {
         if self.enabled(r.metadata()) {
+            #[cfg(target_os = "android")]
+            android_jni::logcat(r.level(), &format!("[{}] {}", r.target(), r.args()));
+            #[cfg(not(target_os = "android"))]
             eprintln!("[{} {}] {}", r.level(), r.target(), r.args());
         }
     }
@@ -255,6 +261,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 }
                 Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
             }
+            memory::configure(&mut s, &_cc.egui_ctx);
             Ok(Box::new(App::new(LightcraftApp::new(s, services(export_dir)))))
         }),
     )
@@ -276,6 +283,16 @@ pub fn ios_main() {
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
     let dir = app.internal_data_path().unwrap_or_default().join("LightCraft Library");
     let _ = ANDROID_APP.set(app.clone());
+    // the activity's onTrimMemory, passed on within a second whether or not frames are drawn
+    let trims = app.clone();
+    let _ = std::thread::Builder::new().name("trim-memory".into()).spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if android_jni::take_trim_level(&trims) > 0 {
+                memory::warn();
+            }
+        }
+    });
     let mut options = eframe::NativeOptions { android_app: Some(app), ..Default::default() };
     // GL window unless /data/local/tmp/lc_vulkan exists: the emulator's Vulkan surface fails to
     // configure ("Invalid surface"); GPU compute (lightcraft-gpu) still picks Vulkan itself

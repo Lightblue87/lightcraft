@@ -63,6 +63,13 @@ browsers:
   photos that were inside the library at its old location (such as `Picked/` copies) to the
   same place in the library now. This is general, so it also covers a moved library folder on
   the desktop (`lightcraft_engine::cmd::missing::plan_moved_library`).
+- **Memory budget:** set from what the platform allows the process: iOS's jetsam limit
+  (`os_proc_available_memory`; the Simulator has none, so half the Mac's RAM), and half the
+  RAM on Android. The budget is 40% of that, from 256 MiB to 1 GiB, with 3 decoded previews
+  and a 512 MB thumbnail cache. On a memory warning (iOS `didReceiveMemoryWarning`, Android
+  `onTrimMemory`, checked every second) the budget drops by a quarter at once, the GPU pool
+  is trimmed, free allocator pages go back to the system, and the caches evict on the next
+  frame (`src/memory.rs`). Log lines start with `memory:`.
 - **Export and share:** exports go to a folder next to the library (`Documents/LightCraft
   Exports` on iOS, so they show in the Files app; the app's private files on Android). When an
   export from the Export dialog finishes, the share sheet opens with the files: AirDrop, Save
@@ -108,12 +115,14 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
-- **No mobile memory budget yet.** The engine still budgets memory like a desktop.
+- **Memory: large exports aren't bounded yet.** A single huge raw decode can still go past
+  the budget (the engine's decode gate always lets one job through), and the GPU renders
+  whole-image buffers. Older 3–4 GB phones may need a lower cap or tiled exports.
 - **Import caveats.** Picked photos are copied into `<library>/Picked`, so they take up space
   twice. On Android the picker hides original file names, so photos arrive named after their
   media IDs, and HEIC/HEIF is converted to JPEG on the Java side (losing EXIF). Raw files from
   the photo library haven't been tried on either platform, because there was no raw sample to
   add to the simulators.
 - **Android.** The window uses GL, because the emulator's Vulkan surface fails to configure;
-  `adb shell touch /data/local/tmp/lc_vulkan` tries Vulkan. Logs go to stderr, which Android
-  discards.
+  `adb shell touch /data/local/tmp/lc_vulkan` tries Vulkan. Logs go to logcat, tag
+  `LightCraft` (`adb logcat -s 'LightCraft:*'`).

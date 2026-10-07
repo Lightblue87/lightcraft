@@ -8,7 +8,8 @@
 //! winit takes the app's lifecycle from `UIApplication…Notification`s, which UIKit still posts
 //! for scene-based apps, so nothing else needs forwarding.
 //!
-//! The same delegate tracks the soft keyboard: winit 0.30 shows it (when egui focuses a text
+//! The same delegate passes on memory warnings ([`crate::memory::warn`]) and tracks the soft
+//! keyboard: winit 0.30 shows it (when egui focuses a text
 //! field) but reports nothing about the screen it covers, so [`keyboard_height`] comes from
 //! UIKit's keyboard-frame notifications, for the shell to fold into egui's safe area.
 //!
@@ -23,8 +24,9 @@ use objc2::runtime::NSObject;
 use objc2::{ClassType, MainThreadOnly, Message, define_class, sel};
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSObjectProtocol, NSValue};
 use objc2_ui_kit::{
-    NSValueUIGeometryExtensions, UIKeyboardFrameEndUserInfoKey, UIKeyboardWillChangeFrameNotification, UIKeyboardWillHideNotification, UIResponder,
-    UIScene, UISceneConnectionOptions, UISceneDelegate, UISceneSession, UIView, UIWindow, UIWindowScene, UIWindowSceneDelegate,
+    NSValueUIGeometryExtensions, UIApplicationDidReceiveMemoryWarningNotification, UIKeyboardFrameEndUserInfoKey,
+    UIKeyboardWillChangeFrameNotification, UIKeyboardWillHideNotification, UIResponder, UIScene, UISceneConnectionOptions, UISceneDelegate,
+    UISceneSession, UIView, UIWindow, UIWindowScene, UIWindowSceneDelegate,
 };
 
 /// Points of the window's bottom the soft keyboard covers (f32 bits; 0 when it's down).
@@ -60,6 +62,7 @@ define_class!(
             unsafe {
                 center.addObserver_selector_name_object(self, sel!(keyboardWillChangeFrame:), Some(UIKeyboardWillChangeFrameNotification), None);
                 center.addObserver_selector_name_object(self, sel!(keyboardWillHide:), Some(UIKeyboardWillHideNotification), None);
+                center.addObserver_selector_name_object(self, sel!(memoryWarning:), Some(UIApplicationDidReceiveMemoryWarningNotification), None);
             }
         }
     }
@@ -73,6 +76,11 @@ define_class!(
         #[unsafe(method(keyboardWillHide:))]
         fn keyboard_will_hide(&self, _note: &NSNotification) {
             set_keyboard(0.0);
+        }
+
+        #[unsafe(method(memoryWarning:))]
+        fn memory_warning(&self, _note: &NSNotification) {
+            crate::memory::warn();
         }
     }
 
@@ -115,6 +123,24 @@ pub fn keyboard_height() -> f32 {
 /// The egui context to repaint when the keyboard moves.
 pub fn set_context(ctx: &egui::Context) {
     CONTEXT.with_borrow_mut(|c| *c = Some(ctx.clone()));
+}
+
+unsafe extern "C" {
+    /// libSystem (iOS 13+): bytes this process may still allocate before the system stops it.
+    fn os_proc_available_memory() -> usize;
+}
+
+/// How much memory iOS lets this process use: what it may still allocate
+/// (`os_proc_available_memory`; nearly all of it at launch). The Simulator reports 0 (no jetsam
+/// there): half the machine's memory instead.
+pub fn process_memory_limit() -> Option<usize> {
+    // SAFETY: a documented libSystem call without arguments
+    let available = unsafe { os_proc_available_memory() };
+    if available > 0 {
+        return Some(available);
+    }
+    let ram = objc2_foundation::NSProcessInfo::processInfo().physicalMemory();
+    usize::try_from(ram / 2).ok()
 }
 
 /// The window's root view controller (winit's), to present system UI from.

@@ -84,6 +84,28 @@ public class LightCraftActivity extends NativeActivity {
         });
     }
 
+    private volatile int trimLevel;
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        // running low while in front, or anything after the UI is hidden: shrink caches
+        if (level >= TRIM_MEMORY_RUNNING_LOW) trimLevel = Math.max(trimLevel, level);
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        trimLevel = Math.max(trimLevel, TRIM_MEMORY_COMPLETE);
+    }
+
+    /** The strongest memory trim level since the last call (0: none), for the Rust side. */
+    public int takeTrimLevel() {
+        int level = trimLevel;
+        trimLevel = 0;
+        return level;
+    }
+
     /** The paths of one finished selection (empty when cancelled), or null; oldest first. */
     public String[] takePicked() {
         synchronized (lock) {
