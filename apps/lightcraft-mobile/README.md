@@ -115,7 +115,12 @@ browsers:
   field's text and cursor, and follows changes made outside the keyboard: a tap or an arrow key
   moving the cursor (ending a composition there, without duplicating it), Delete keys,
   hardware keys. egui reports the text in its output events and keeps the cursor in the field's
-  state; a sync waits until egui has applied every edit the keyboard queued. Korean (Gboard 2-set) composes
+  state; a sync waits until egui has applied every edit the keyboard queued. Each field's IME
+  purpose sets the editor's input type: a password field (`TextEdit::password`) gets Android's
+  password type, so the keyboard shows no suggestions, learns nothing and switches to a Latin
+  layout, and its copy only ever holds egui's masked text; a terminal-style field gets no
+  suggestions. (LightCraft has no password fields today; this was checked with the search field
+  made one in a local build.) Korean (Gboard 2-set) composes
   syllable by syllable, and backspace decomposes them. Text in scripts the bundled fonts lack
   shows in the system's Noto Sans CJK, memory-mapped and picked for the device's locale.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
@@ -146,8 +151,7 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   dialogs (see below). There's no landscape-specific arrangement.
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
   On Android the insets are polled (about 10 times a second while typing and for a second
-  after, twice a second otherwise), so the layout follows the keyboard a moment late. Password
-  fields reach the keyboard masked, as egui reports them, and as plain text fields. Composing was
+  after, twice a second otherwise), so the layout follows the keyboard a moment late. Composing was
   verified with Korean on Gboard. English on the emulator's Gboard commits letter by letter (as it
   does in a stock `EditText` there), so English autocorrect and swipe typing are still
   unverified, and Japanese/Chinese keyboards weren't tried.

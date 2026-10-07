@@ -152,34 +152,50 @@ pub fn register_wake(app: &AndroidApp, ctx: &egui::Context) {
 }
 
 /// What the soft keyboard is told about the focused text field: its text and selection (char
-/// indices, as egui counts them).
+/// indices, as egui counts them; a password field's text comes masked), and what it's for.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Field {
     pub text: String,
     pub selection: (usize, usize),
+    pub purpose: egui::IMEPurpose,
 }
 
-fn call_with_field(app: &AndroidApp, method: &'static jni::strings::JNIStr, f: &Field) {
+/// `TextInput.java`'s code for `purpose`.
+fn purpose_code(purpose: egui::IMEPurpose) -> i32 {
+    match purpose {
+        egui::IMEPurpose::Normal => 0,
+        egui::IMEPurpose::Password => 1,
+        egui::IMEPurpose::Terminal => 2,
+    }
+}
+
+/// An egui text field got focus: the soft keyboard types into the activity's text input
+/// (`TextInput.java`), with composing text and suggestions (none for a password field),
+/// starting from `field`.
+pub fn start_text_input(app: &AndroidApp, field: &Field) {
     let r = with_activity(app, |env, activity| {
-        let text = env.new_string(&f.text)?;
-        let (a, b) = (f.selection.0.min(i32::MAX as usize) as i32, f.selection.1.min(i32::MAX as usize) as i32);
-        env.call_method(activity, method, jni_sig!("(Ljava/lang/String;II)V"), &[JValue::Object(&text), JValue::Int(a), JValue::Int(b)]).map(drop)
+        let text = env.new_string(&field.text)?;
+        let (a, b) = (field.selection.0.min(i32::MAX as usize) as i32, field.selection.1.min(i32::MAX as usize) as i32);
+        let args = [JValue::Object(&text), JValue::Int(a), JValue::Int(b), JValue::Int(purpose_code(field.purpose))];
+        env.call_method(activity, jni_str!("startTextInput"), jni_sig!("(Ljava/lang/String;III)V"), &args).map(drop)
     });
     if let Err(e) = r {
         log::warn!("text input: {e}");
     }
 }
 
-/// An egui text field got focus: the soft keyboard types into the activity's text input
-/// (`TextInput.java`), with composing text and suggestions, starting from `field`.
-pub fn start_text_input(app: &AndroidApp, field: &Field) {
-    call_with_field(app, jni_str!("startTextInput"), field);
-}
-
 /// The focused field changed other than by the keyboard (a tap moved the cursor, a key, the field
 /// cleared): the keyboard's copy follows.
 pub fn sync_text_input(app: &AndroidApp, field: &Field) {
-    call_with_field(app, jni_str!("syncTextInput"), field);
+    let r = with_activity(app, |env, activity| {
+        let text = env.new_string(&field.text)?;
+        let (a, b) = (field.selection.0.min(i32::MAX as usize) as i32, field.selection.1.min(i32::MAX as usize) as i32);
+        let args = [JValue::Object(&text), JValue::Int(a), JValue::Int(b)];
+        env.call_method(activity, jni_str!("syncTextInput"), jni_sig!("(Ljava/lang/String;II)V"), &args).map(drop)
+    });
+    if let Err(e) = r {
+        log::warn!("text input: {e}");
+    }
 }
 
 /// No egui text field has focus: the keyboard goes away.

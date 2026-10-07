@@ -94,9 +94,10 @@ public class LightCraftActivity extends NativeActivity {
 
     /**
      * An egui text field got focus: the soft keyboard types into {@link TextInput} (composing
-     * text, suggestions), starting from the field's text and selection (code points).
+     * text, suggestions), starting from the field's text and selection (code points), set up for
+     * its purpose ({@link TextInput#NORMAL}, {@link TextInput#PASSWORD}, {@link TextInput#TERMINAL}).
      */
-    public void startTextInput(final String text, final int selStart, final int selEnd) {
+    public void startTextInput(final String text, final int selStart, final int selEnd, final int purpose) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -114,7 +115,7 @@ public class LightCraftActivity extends NativeActivity {
                     addContentView(textInput, new ViewGroup.LayoutParams(1, 1));
                 }
                 TextInput t = textInput;
-                t.reset(text, selStart, selEnd);
+                t.reset(text, selStart, selEnd, purpose);
                 t.setFocusable(true);
                 t.setFocusableInTouchMode(true);
                 t.requestFocus();

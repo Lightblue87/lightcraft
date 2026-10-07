@@ -48,6 +48,10 @@ final class TextInput extends View {
     /** The field's text and selection (UTF-16) the next input connection starts from. */
     private String text = "";
     private int selStart, selEnd;
+    /** What the field is for: {@link #NORMAL}, {@link #PASSWORD} or {@link #TERMINAL} (egui's IME purpose). */
+    private int purpose;
+
+    static final int NORMAL = 0, PASSWORD = 1, TERMINAL = 2;
     private Connection connection;
 
     TextInput(Context context, Wake wake) {
@@ -89,10 +93,12 @@ final class TextInput extends View {
 
     /**
      * A field got focus: the next input connection starts from its text and selection ({@code a},
-     * {@code b}: code points, as egui counts). UI thread, before restarting input.
+     * {@code b}: code points, as egui counts) and is set up for its {@code purpose}. UI thread,
+     * before restarting input.
      */
-    void reset(String text, int a, int b) {
+    void reset(String text, int a, int b, int purpose) {
         clear();
+        this.purpose = purpose;
         this.text = text;
         selStart = utf16(text, Math.min(a, b));
         selEnd = utf16(text, Math.max(a, b));
@@ -111,7 +117,7 @@ final class TextInput extends View {
         }
         Connection c = connection;
         if (c == null) {
-            reset(text, a, b);
+            reset(text, a, b, purpose);
             return;
         }
         Editable e = c.getEditable();
@@ -136,10 +142,23 @@ final class TextInput extends View {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo info) {
-        // plain text with suggestions; Enter is a key (egui decides: a new line, or done)
-        info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+        // Enter is a key (egui decides: a new line, or done)
         info.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 | EditorInfo.IME_ACTION_NONE;
+        switch (purpose) {
+            case PASSWORD:
+                // no suggestions, nothing learned or remembered (the copy holds egui's masked text)
+                info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD;
+                info.imeOptions |= EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
+                break;
+            case TERMINAL:
+                // typed as is: no suggestions or corrections
+                info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                break;
+            default:
+                // plain text with suggestions
+                info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+        }
         Connection c = new Connection();
         Editable e = c.getEditable();
         e.replace(0, e.length(), text);

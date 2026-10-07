@@ -122,7 +122,9 @@ impl App {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         let Some(android) = ANDROID_APP.get() else { return };
-        let wanted = ctx.output(|o| o.ime.is_some()).then(|| ctx.memory(|m| m.focused())).flatten();
+        let ime = ctx.output(|o| o.ime.map(|i| i.purpose));
+        let wanted = ime.and_then(|_| ctx.memory(|m| m.focused()));
+        let purpose = ime.unwrap_or_default();
         // the field's text, from what it reported this frame (focus, a change, a selection), and
         // its selection, from its state
         let reported = ctx.output(|o| {
@@ -137,8 +139,12 @@ impl App {
                 .and_then(|s| s.cursor.char_range())
                 .map(|r| r.as_sorted_char_range())
                 .map_or((n, n), |r| (r.start.0.min(n), r.end.0.min(n)));
-            android_jni::Field { text, selection }
+            android_jni::Field { text, selection, purpose }
         };
+        // the same field, now for another purpose (e.g. a password shown or hidden): start afresh
+        if wanted == self.text_input && purpose != self.field.purpose {
+            self.text_input = None;
+        }
         if wanted == self.text_input {
             if let Some(id) = wanted {
                 let f = field(id, reported.unwrap_or_else(|| self.field.text.clone()));
