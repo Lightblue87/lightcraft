@@ -19,8 +19,10 @@ const THUMB_EDGE: usize = 128;
 
 pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    // the compact layout's sheet: full width
+    let width = if super::compact::is_compact(ui.ctx()) { ui.available_width() } else { t.panel_w };
     egui::Panel::right("presets_panel")
-        .exact_size(t.panel_w)
+        .exact_size(width)
         .resizable(false)
         .frame(egui::Frame::NONE.fill(t.chrome).stroke(egui::Stroke::new(1.0, t.divider)))
         .show(ui, |ui| {

@@ -27,8 +27,8 @@ The engine is already portable. The cost is almost entirely **UX** (touch and ph
 | Touch slider drag → live render + histogram | ✅ | ✅ |
 | Kill −9 then relaunch keeps the edit | ✅ (1 journal record replayed) | not tested |
 | iOS 27 runtime | ✅ after adopting UIScene in the shell (it crashed at launch before: winit 0.30.13 has no scene lifecycle) | — |
-| Phone layout | ❌ photo squeezed to ~90 pt, top bar under the Dynamic Island | — |
-| Vertical swipe scrolls the edit panel | ❌ didn't scroll | not tested |
+| Phone layout | ✅ first pass: a compact layout below 600 pt, with the safe area respected (before: photo squeezed to ~90 pt, top bar under the Dynamic Island) | not tested (tablet emulator only) |
+| Vertical swipe scrolls the edit panel | ✅ (egui ignored the first touch gesture after launch; the shell now declares the touch screen) | not tested |
 
 ### Blockers found by running it (not visible from reading code)
 
@@ -118,7 +118,7 @@ The engine is already portable. The cost is almost entirely **UX** (touch and ph
 | Storage: opaque source ids, copy-in import, sidecars/move/devices off, caches → Caches/ | 1–2 | — |
 | Lifecycle and memory: suspend hooks, budgets, memory warnings, GL fallback | 2–3 | — |
 | Touch pass: drag vs scroll, pinch/pan, long-press, 44 pt targets, hover replacements, keyboard/IME | 6–10 | — |
-| Phone layout: single column, bottom-sheet panels, tab bar, modal tools, full-screen dialogs | — | 10–16 |
+| Phone layout: single column, bottom-sheet panels, tab bar, modal tools, full-screen dialogs (first pass done: compact layout, sheet, drawer, safe area) | — | 10–16 |
 | GPU tiling for exports on 128–256 MB devices | 2–3 | — |
 | CI (`cargo check` for both targets), device-farm QA | 1–2 | 1–2 |
 | **Total** | **18–29 wk (≈4–7 months)** | **+11–18 wk** |
@@ -144,7 +144,7 @@ same desktop UI.
 2. The **winit/UIScene** blocker is solved in the shell; that leaves no hard blockers.
 3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
    That benefits the web build on tablets too.
-4. Treat phones as a separate milestone that needs a real phone layout.
+4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area and a three-across grid. Still to do: phone-sized dialogs, touch gestures (pinch, swipe between photos) and keeping slider drags from fighting scrolling.
 
 ## Spike artifacts
 

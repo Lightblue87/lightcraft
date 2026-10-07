@@ -41,6 +41,8 @@ mod tests_activity;
 #[cfg(test)]
 mod tests_album_picker;
 #[cfg(test)]
+mod tests_compact;
+#[cfg(test)]
 mod tests_crop_rotate;
 #[cfg(test)]
 mod tests_curve;
@@ -1007,6 +1009,19 @@ impl LightcraftApp {
 
     /// Lay out the whole window.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        // inside the safe area (iOS: clear of the status bar, Dynamic Island and home indicator;
+        // the insets are zero elsewhere), in the compact layout when that is narrow
+        let content = ui.ctx().content_rect();
+        panels::compact::update(self, &ui.ctx().clone(), content.width());
+        if content == ui.max_rect() {
+            return self.layout(ui);
+        }
+        ui.painter().rect_filled(ui.max_rect(), 0.0, theme::Tokens::get(ui.ctx()).chrome);
+        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(content));
+        self.layout(&mut inner);
+    }
+
+    fn layout(&mut self, ui: &mut egui::Ui) {
         i18n::set_language(self.ui.language);
         let ctx = ui.ctx().clone();
         if !self.fonts_ready {
@@ -1034,19 +1049,23 @@ impl LightcraftApp {
         }
         // Order matters: earlier panels take the full edge (top bar spans the window; the tool strip,
         // right panels and left panel run to the bottom; the bottom bar sits between them).
-        panels::topbar::show(self, ui);
-        panels::library_problem::banner(self, ui);
-        panels::strip::show(self, ui);
-        if self.ui.right != state::RightPanel::None {
-            panels::right::show(self, ui);
+        if panels::compact::is_compact(&ctx) {
+            panels::compact::show(self, ui);
+        } else {
+            panels::topbar::show(self, ui);
+            panels::library_problem::banner(self, ui);
+            panels::strip::show(self, ui);
+            if self.ui.right != state::RightPanel::None {
+                panels::right::show(self, ui);
+            }
+            if self.ui.presets {
+                panels::presets::show(self, ui);
+            }
+            if self.ui.left_panel {
+                panels::left::show(self, ui);
+            }
+            panels::bottombar::show(self, ui);
         }
-        if self.ui.presets {
-            panels::presets::show(self, ui);
-        }
-        if self.ui.left_panel {
-            panels::left::show(self, ui);
-        }
-        panels::bottombar::show(self, ui);
         let t = theme::Tokens::get(&ctx);
         let bg = if matches!(self.ui.view, state::ViewMode::Detail | state::ViewMode::Compare | state::ViewMode::Survey | state::ViewMode::Reference)
         {

@@ -225,7 +225,7 @@ fn right_side(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect) -> f32 {
     if child.min_rect().width() > 0.0 { child.min_rect().left() } else { full.right() }
 }
 
-fn sort_menu(app: &mut LightcraftApp, ui: &mut egui::Ui) {
+pub(crate) fn sort_menu(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     use lightcraft_catalog::GroupBy;
     use lightcraft_catalog::SortKey::*;
     let cur = app.session.sort;

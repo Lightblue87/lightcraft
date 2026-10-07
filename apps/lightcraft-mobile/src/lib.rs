@@ -14,13 +14,25 @@ mod ios_scene;
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
 
-struct App(LightcraftApp);
+struct App(LightcraftApp, bool);
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.0.logic(ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // egui turns on touch drag-to-scroll once it has seen a touch, but hit-tests against the
+        // previous frame, so the first swipe after launch would never scroll: announce the touch
+        // screen up front with a cancelled touch
+        if !std::mem::replace(&mut self.1, true) {
+            raw.events.push(egui::Event::Touch {
+                device_id: egui::TouchDeviceId(0),
+                id: egui::TouchId(0),
+                phase: egui::TouchPhase::Cancel,
+                pos: egui::Pos2::ZERO,
+                force: None,
+            });
+        }
         self.0.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -98,7 +110,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 }
                 Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
             }
-            Ok(Box::new(App(LightcraftApp::new(s, services()))))
+            Ok(Box::new(App(LightcraftApp::new(s, services()), false)))
         }),
     )
 }

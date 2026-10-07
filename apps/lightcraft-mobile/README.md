@@ -4,7 +4,7 @@ The desktop egui UI and engine, **unmodified**, in a thin iOS/iPadOS or Android 
 feasibility spike, not a usable mobile app. The assessment, the effort estimate and the blockers
 are in [docs/porting-report.md](docs/porting-report.md).
 
-| iPad (iOS 26.5 Simulator) | iPhone | Android tablet (API 35 emulator) |
+| iPad (iOS 26.5 Simulator) | iPhone, before the compact layout | Android tablet (API 35 emulator) |
 |---|---|---|
 | ![iPad](docs/screens/ipad-exposure-drag.jpg) | ![iPhone](docs/screens/iphone.jpg) | ![Android](docs/screens/android-tablet-slider.jpg) |
 
@@ -30,16 +30,37 @@ If `cargo` on `PATH` isn't rustup's, set `CARGO` (for example
 - GPU compute runs on Metal (iOS). Edits survive a hard kill, because the journal is fsynced
   per command.
 
+## Phone layout
+
+Below 600pt of width (inside the safe area), `lightcraft-ui-egui` switches to a compact layout
+(`crates/ui-egui/src/panels/compact.rs`). It's used on phones, iPad Split View and phone
+browsers:
+
+- **Top bar:** My Photos, Back, Menu, a search field, Filter and Export.
+- **Detail view:** the photo on top, and a bottom sheet with a tool row (Presets, Edit, Crop,
+  Remove, Masking, Info …). The sheet shows that panel at full width; Hide puts it away.
+- **My Photos:** a full-width drawer that closes when you pick a source.
+- **Grid:** about three thumbnails across.
+- **Bottom bar:** view modes, Sort, Filmstrip and an Edit toggle.
+
+The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home indicator).
+
+| | Edit sheet | Grid | My Photos |
+|---|---|---|---|
+| iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) |
+
 ## Known problems
 
 - **iOS scene lifecycle is adopted by the shell, not winit.** winit 0.30 has no UIScene support,
   and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
-- **Phone layout.** The desktop panels squeeze the photo to a sliver, and the top bar sits
-  under the status bar and Dynamic Island. There are no safe areas.
-- **Touch.** Drags fight scrolling (the edit panel doesn't scroll), there's no pinch zoom,
-  some controls appear only on hover, and hit targets are small.
+- **Phone layout is a first pass.** Narrow windows get a compact layout (see below), but
+  dialogs (Import, Export, Settings) are still desktop-sized, and there's no landscape-specific
+  arrangement.
+- **Touch.** A swipe that starts on a slider's track moves the slider, not the sheet. There's
+  no pinch zoom, some controls appear only on hover, and the desktop layout's hit targets are
+  small.
 - **No pickers, sharing or memory budget yet.** All `Services` except export writing are
   `None`, so nothing can be imported beyond the demo photos.
 - **Android.** The window uses GL, because the emulator's Vulkan surface fails to configure;
