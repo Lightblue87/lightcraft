@@ -72,8 +72,8 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
   On Android the insets are polled (about 12 times a second while typing, twice a second
   otherwise), so the layout follows the keyboard a moment late. Typing goes through
-  NativeActivity's key events, which is fine for plain text but has no composing (IME)
-  support, so CJK input, autocorrect and swipe typing won't work. That needs GameActivity.
+  NativeActivity's key events, which works for plain text. Composing input (CJK, autocorrect,
+  swipe typing) is untested and probably doesn't work. Full IME support needs GameActivity.
 - **Touch.** There's no pinch zoom, some controls appear only on hover, and the desktop
   layout's hit targets are small. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
