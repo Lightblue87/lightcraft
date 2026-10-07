@@ -123,8 +123,11 @@ browsers:
   made one in a local build.) Numbers typed into egui drag values (capture-time shift and time
   zone, rename "Start at", the smart-collection rules) get the number pad with a minus sign and a
   decimal point: a drag value reports itself when clicked, which focuses the text field it turns
-  into, so the shell remembers which focus came with it. That field starts with an empty copy
-  (it reports its text only once edited), which the first edit corrects. Korean (Gboard 2-set) composes
+  into, so the shell remembers which focus came with it, and its value. The field reports no
+  text as it starts, and egui keeps it private, but it starts all selected: the keyboard's copy
+  is the value in egui's number format with the count of decimals that gives the selection's
+  length ("0.00", "-5.50", "0" for "0 h"). A custom formatter that matches no such count leaves
+  the copy empty until the first edit. Korean (Gboard 2-set) composes
   syllable by syllable, and backspace decomposes them. Text in scripts the bundled fonts lack
   shows in the system's Noto Sans CJK, memory-mapped and picked for the device's locale.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll

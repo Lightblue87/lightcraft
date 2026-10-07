@@ -42,9 +42,9 @@ struct App {
     #[cfg(target_os = "android")]
     field: android_jni::Field,
     /// The widget that had focus when a drag value or slider last reported itself (a click on
-    /// one focuses its text field before that field exists).
+    /// one focuses its text field before that field exists), with the value it reported.
     #[cfg(target_os = "android")]
-    numeric_focus: Option<egui::Id>,
+    numeric_focus: Option<(egui::Id, Option<f64>)>,
     /// Until when (egui time, s) the insets are read often after the keyboard went away: it
     /// slides out after the last frame, and nothing else would draw one.
     #[cfg(target_os = "android")]
@@ -149,8 +149,14 @@ impl App {
         };
         // a drag value (or slider) reports itself when clicked, which focuses the text field it
         // turns into from the next frame on: remember which focus came with it
-        if ctx.output(|o| o.events.iter().any(|e| matches!(e.widget_info().typ, egui::WidgetType::DragValue | egui::WidgetType::Slider))) {
-            self.numeric_focus = ctx.memory(|m| m.focused());
+        let numeric = ctx.output(|o| {
+            o.events.iter().find_map(|e| {
+                let info = e.widget_info();
+                matches!(info.typ, egui::WidgetType::DragValue | egui::WidgetType::Slider).then_some(info.value)
+            })
+        });
+        if let Some(value) = numeric {
+            self.numeric_focus = ctx.memory(|m| m.focused()).map(|id| (id, value));
         }
         // the same field, now for another purpose (e.g. a password shown or hidden): start afresh
         if wanted == self.text_input && purpose != self.field.purpose {
@@ -169,10 +175,13 @@ impl App {
         }
         match wanted {
             Some(id) => {
-                // (a field that reported nothing yet starts empty; its first report syncs)
-                self.field = field(id, reported.unwrap_or_default());
                 // a drag value (or slider) being typed into: the keyboard is the number pad
-                self.field.numeric = self.numeric_focus == Some(id);
+                let number = self.numeric_focus.filter(|(f, _)| *f == id).map(|(_, v)| v);
+                // its text field reports no text when it starts: rebuild it from the reported
+                // value (a field that reported nothing else starts empty; its first report syncs)
+                let text = reported.or_else(|| number.flatten().and_then(|v| drag_value_text(ctx, id, v))).unwrap_or_default();
+                self.field = field(id, text);
+                self.field.numeric = number.is_some();
                 android_jni::start_text_input(android, &self.field);
             }
             None => {
@@ -192,6 +201,18 @@ impl App {
             raw.events.extend(android_jni::take_text_input(android).into_iter().map(egui::Event::Ime));
         }
     }
+}
+
+/// The text egui's drag value `id` shows for `value` as it starts being typed into. egui keeps that
+/// text private, but selects all of it then, so its length is known: it's the value in egui's
+/// number format with the one count of decimals that gives that length. `None` when none does
+/// (e.g. a custom formatter).
+#[cfg(target_os = "android")]
+fn drag_value_text(ctx: &egui::Context, id: egui::Id, value: f64) -> Option<String> {
+    let len = egui::text_edit::TextEditState::load(ctx, id)?.cursor.char_range()?.as_sorted_char_range().end.0;
+    let style = ctx.global_style();
+    let format = &style.number_formatter;
+    (0..=15).map(|d| format.format(value, d..=d)).find(|t| t.chars().count() == len)
 }
 
 /// A photo pick is under way (Android: its result is polled, see `App::logic`).
