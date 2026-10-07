@@ -1047,9 +1047,9 @@ fn quick_name(q: lightcraft_engine::media::QuickSource) -> &'static str {
 /// Targeted adjustment tool: dragging up/down on the photo raises/lowers the tone-curve region or
 /// the colour-mixer bands under the press point (`develop.targeted`, one call per whole step, all
 /// in one interaction = one undo step).
-fn targeted_drag(app: &mut LightcraftApp, resp: &egui::Response, map: &CanvasMap, target: &str) {
+fn targeted_drag(app: &mut LightcraftApp, ui: &egui::Ui, resp: &egui::Response, map: &CanvasMap, target: &str) {
     if resp.drag_started()
-        && let Some(q) = resp.interact_pointer_pos()
+        && let Some(q) = crate::widgets::press_pos(ui, resp)
     {
         let _ = app.run("develop.beginInteraction", json!({"label": "Targeted Adjustment"}));
         app.gesture = Some(Gesture::Targeted { at: map.norm(q), acc: 0.0 });
@@ -1161,7 +1161,7 @@ fn general_interaction(
         return;
     }
     if let Some(target) = app.ui.tool.strip_prefix("tat:").map(str::to_string) {
-        targeted_drag(app, resp, map, &target);
+        targeted_drag(app, ui, resp, map, &target);
         return;
     }
     if app.ui.tool == "colorRange" {
@@ -1302,6 +1302,17 @@ fn crop_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
         let s = to_straight(n, d.crop.geometry.angle, frame);
         d.crop.geometry.rect.contains(Point::new(s.x.clamp(-1.0, 2.0), s.y))
     };
+    // the handle a press at `q` grabs: the nearest within reach (a finger's on a touch screen)
+    let reach = crate::widgets::grab_radius(ui.ctx(), 12.0);
+    let grab = |q: Pos2| {
+        handles
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (i, h.distance(q)))
+            .filter(|(_, dist)| *dist < reach)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
+    };
     // a crop drag cut short (the tool closed before the release) leaves its gesture behind: with no
     // button held it is over
     if matches!(app.gesture, Some(Gesture::CropRotate { .. } | Gesture::CropHandle { .. }))
@@ -1321,7 +1332,7 @@ fn crop_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             Some(Gesture::CropHandle { handle, .. }) => Some(usize::from(handle)),
             _ => None,
         };
-        let near = held.or_else(|| handles.iter().position(|h| h.distance(hq) < 12.0)).filter(|_| !rotating);
+        let near = held.or_else(|| grab(hq)).filter(|_| !rotating);
         let cursor = match near {
             Some(0 | 2) => egui::CursorIcon::ResizeNwSe,
             Some(1 | 3) => egui::CursorIcon::ResizeNeSw,
@@ -1345,16 +1356,16 @@ fn crop_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
     if resp.double_clicked()
         && let Some(q) = resp.interact_pointer_pos()
         && inside(q)
-        && !handles.iter().any(|h| h.distance(q) < 12.0)
+        && grab(q).is_none()
     {
         let _ = app.run("tool.done", json!({}));
         return;
     }
     if resp.drag_started()
-        && let Some(q) = resp.interact_pointer_pos()
+        && let Some(q) = crate::widgets::press_pos(ui, resp)
     {
         let _ = app.run("develop.beginInteraction", json!({"label": "Crop"}));
-        app.gesture = Some(match handles.iter().position(|h| h.distance(q) < 12.0) {
+        app.gesture = Some(match grab(q) {
             Some(h) => Gesture::CropHandle { handle: h as u8, start: d.crop.geometry.rect, angle: d.crop.geometry.angle },
             None if inside(q) => Gesture::CropHandle { handle: 8, start: d.crop.geometry.rect, angle: d.crop.geometry.angle },
             None => {
@@ -1471,7 +1482,7 @@ fn guided_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respo
     }
     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     if resp.drag_started()
-        && let Some(q) = resp.interact_pointer_pos()
+        && let Some(q) = crate::widgets::press_pos(ui, resp)
     {
         app.gesture = Some(Gesture::Guide { a: map.norm(q) });
     }
@@ -1487,6 +1498,15 @@ fn guided_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respo
             let (ca, cb) = (frame.transformed_to_corrected(a), frame.transformed_to_corrected(b));
             let _ = app.run("geometry.guides", json!({"guides": [[ca.x, ca.y, cb.x, cb.y]], "add": true}));
         }
+    }
+}
+
+/// The first points of a brush or spot stroke whose first position is `n`: the press point too
+/// when the stroke began as a drag (the pointer is past the drag threshold by then).
+fn stroke_start(ui: &egui::Ui, resp: &egui::Response, map: &CanvasMap, n: Point) -> Vec<Point> {
+    match ui.input(|i| i.pointer.press_origin()).filter(|_| resp.drag_started()).map(|q| map.norm(q)) {
+        Some(o) if o != n => vec![o, n],
+        _ => vec![n],
     }
 }
 
@@ -1720,7 +1740,8 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             let n = map.norm(q);
             match &mut app.gesture {
                 Some(Gesture::Brush { points }) => points.push(n),
-                _ => app.gesture = Some(Gesture::Brush { points: vec![n] }),
+                // from where it was pressed, not where the drag threshold was passed
+                _ => app.gesture = Some(Gesture::Brush { points: stroke_start(ui, resp, map, n) }),
             }
         }
         // the stroke being painted (the render shows it once it's committed)
@@ -1744,10 +1765,11 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
         return;
     }
     // the grip under the pointer: the selected mask's first, then the nearest
+    let reach = crate::widgets::grab_radius(ui.ctx(), 10.0);
     let hit = |q: Pos2| {
         grips
             .iter()
-            .filter(|g| g.3.distance(q) < 10.0)
+            .filter(|g| g.3.distance(q) < reach)
             .min_by(|a, b| {
                 (Some(a.0) != active, a.3.distance(q)).partial_cmp(&(Some(b.0) != active, b.3.distance(q))).unwrap_or(std::cmp::Ordering::Equal)
             })
@@ -1908,7 +1930,7 @@ fn remove_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respo
         let n = map.norm(q);
         match &mut app.gesture {
             Some(Gesture::Spot { points }) => points.push(n),
-            _ => app.gesture = Some(Gesture::Spot { points: vec![n] }),
+            _ => app.gesture = Some(Gesture::Spot { points: stroke_start(ui, resp, map, n) }),
         }
     }
     if let Some(Gesture::Spot { points }) = &app.gesture {

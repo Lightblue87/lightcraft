@@ -17,19 +17,34 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
+            let modes = [
+                ("photoGrid", Icon::GridPhoto, ViewMode::PhotoGrid, "Photo Grid (G)"),
+                ("squareGrid", Icon::GridSquare, ViewMode::SquareGrid, "Square Grid (G toggles)"),
+                ("detail", Icon::Single, ViewMode::Detail, "Detail (D)"),
+                ("compare", Icon::Compare, ViewMode::Compare, "Compare (Shift+C)"),
+                ("survey", Icon::Survey, ViewMode::Survey, "Survey (N)"),
+                ("people", Icon::Subject, ViewMode::People, "People"),
+            ];
             let left_end = ui
                 .horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    for (id, icon, mode, tip) in [
-                        ("photoGrid", Icon::GridPhoto, ViewMode::PhotoGrid, "Photo Grid (G)"),
-                        ("squareGrid", Icon::GridSquare, ViewMode::SquareGrid, "Square Grid (G toggles)"),
-                        ("detail", Icon::Single, ViewMode::Detail, "Detail (D)"),
-                        ("compare", Icon::Compare, ViewMode::Compare, "Compare (Shift+C)"),
-                        ("survey", Icon::Survey, ViewMode::Survey, "Survey (N)"),
-                        ("people", Icon::Subject, ViewMode::People, "People"),
-                    ] {
-                        if icon_button(ui, id, icon, vec2(32.0, 32.0), app.ui.view == mode, true, tip).clicked() {
-                            let _ = app.run(&format!("view.{id}"), json!({}));
+                    if full.width() < NARROW_W {
+                        // no room for six buttons next to the zoom group (an iPad in portrait with
+                        // My Photos open): one button with the current mode opens the list
+                        let (_, icon, _, _) = modes.iter().find(|m| m.2 == app.ui.view).copied().unwrap_or(modes[0]);
+                        let b = icon_button(ui, "viewMode", icon, vec2(32.0, 32.0), true, true, "View mode");
+                        egui::Popup::menu(&b).show(|ui| {
+                            for (id, _, mode, tip) in modes {
+                                if ui.selectable_label(app.ui.view == mode, crate::i18n::tr(tip)).clicked() {
+                                    let _ = app.run(&format!("view.{id}"), json!({}));
+                                }
+                            }
+                        });
+                    } else {
+                        for (id, icon, mode, tip) in modes {
+                            if icon_button(ui, id, icon, vec2(32.0, 32.0), app.ui.view == mode, true, tip).clicked() {
+                                let _ = app.run(&format!("view.{id}"), json!({}));
+                            }
                         }
                     }
                     ui.add_space(10.0);
@@ -42,10 +57,13 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 .response
                 .rect
                 .right();
-            let right_start = right_side(app, ui, full);
+            let right_start = right_side(app, ui, full, left_end + 12.0);
             centre(app, ui, full, left_end + 12.0, right_start - 12.0);
         });
 }
+
+/// Below this width the view-mode buttons collapse into one (they and the zoom group need ~420).
+const NARROW_W: f32 = 440.0;
 
 /// Width of the centre group: the rating/flag pill, then Copy/Paste Edit Settings and its gear.
 const PILL_W: f32 = 196.0;
@@ -122,12 +140,14 @@ fn centre(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect, from: f32, to:
     }
 }
 
-/// The right-hand group (zoom, view toggles or thumbnail size); returns its left edge.
-fn right_side(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect) -> f32 {
+/// The right-hand group (zoom, view toggles or thumbnail size), right of `from` (the left group's
+/// end); returns its left edge. Where there is no room (an iPad in portrait with My Photos open)
+/// Face boxes and Click 1:1 are left out first: both are in the View menu too.
+fn right_side(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect, from: f32) -> f32 {
     let t = Tokens::get(ui.ctx());
     let mut child = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(Rect::from_min_max(pos2(full.right() - 360.0, full.top()), full.right_bottom()))
+            .max_rect(Rect::from_min_max(pos2(from.max(full.right() - 360.0).min(full.right()), full.top()), full.right_bottom()))
             .layout(egui::Layout::right_to_left(egui::Align::Center)),
     );
     child.spacing_mut().item_spacing.x = 6.0;
@@ -148,20 +168,24 @@ fn right_side(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect) -> f32 {
     if app.ui.view == ViewMode::Survey {
         // no zoom or thumbnail size in Survey
     } else if matches!(app.ui.view, ViewMode::Detail | ViewMode::Compare) {
-        if icon_button(
-            &mut child,
-            "beforeAfter",
-            Icon::BeforeAfter,
-            vec2(30.0, 30.0),
-            app.ui.before_after != BeforeAfter::Off,
-            true,
-            "Before/After (Y)",
-        )
-        .clicked()
+        // Before/After only with room for it, Filmstrip and the zoom menu
+        if child.available_width() >= 36.0 + 36.0 + 10.0 + 64.0
+            && icon_button(
+                &mut child,
+                "beforeAfter",
+                Icon::BeforeAfter,
+                vec2(30.0, 30.0),
+                app.ui.before_after != BeforeAfter::Off,
+                true,
+                "Before/After (Y)",
+            )
+            .clicked()
         {
             let _ = app.run("view.beforeAfter", json!({}));
         }
+        // room left for Face boxes and what has to follow it (Filmstrip, the zoom menu)
         if app.ui.view == ViewMode::Detail
+            && child.available_width() >= 36.0 + 36.0 + 10.0 + 64.0
             && icon_button(&mut child, "faceBoxes", Icon::FaceBox, vec2(30.0, 30.0), app.ui.face_boxes, true, "Face boxes").clicked()
         {
             let _ = app.run("view.faceBoxes", json!({}));
@@ -191,6 +215,9 @@ fn right_side(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect) -> f32 {
                 }
             }
         });
+        if child.available_width() < 6.0 + 90.0 {
+            return child.min_rect().left();
+        }
         child.add_space(6.0);
         let cz = crate::widgets::dropdown(
             &mut child,

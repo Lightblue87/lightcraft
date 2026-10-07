@@ -89,6 +89,8 @@ mod tests_sync;
 #[cfg(test)]
 mod tests_titlebar;
 #[cfg(test)]
+mod tests_touch;
+#[cfg(test)]
 mod tests_unsaved;
 #[cfg(test)]
 mod tests_zoom;
@@ -262,6 +264,8 @@ pub struct LightcraftApp {
     synthetic_mods: egui::Modifiers,
     /// Clear `synthetic_mods` on the next frame.
     synthetic_mods_release: bool,
+    /// A lifted finger's `PointerGone`, held back to the next frame (see [`defer_touch_pointer_gone`]).
+    pointer_gone_deferred: bool,
     styled: bool,
     /// The language the installed fonts were built for: the CJK fallback order follows the UI
     /// language's script, so switching language reinstalls them.
@@ -364,6 +368,7 @@ impl LightcraftApp {
             pending_picks: vec![],
             synthetic_mods: egui::Modifiers::NONE,
             synthetic_mods_release: false,
+            pointer_gone_deferred: false,
             styled: false,
             font_language: i18n::Locale::En,
             chinese_font: None,
@@ -781,6 +786,10 @@ impl LightcraftApp {
 
     /// Per-frame logic before layout (control channel, renders, shortcuts, drops).
     pub fn logic(&mut self, ctx: &egui::Context) {
+        if self.pointer_gone_deferred {
+            // the next frame delivers the held-back `PointerGone`
+            ctx.request_repaint();
+        }
         i18n::set_language(self.ui.language);
         let t0 = now_ms();
         panels::library_problem::logic(self);
@@ -968,6 +977,7 @@ impl LightcraftApp {
 
     /// Inject synthetic events (pointer events one per frame; key sequences up to the release).
     pub fn raw_input_hook(&mut self, raw: &mut egui::RawInput) {
+        defer_touch_pointer_gone(&mut self.pointer_gone_deferred, raw);
         // the frame after a synthetic release / key: modifiers back up
         if std::mem::take(&mut self.synthetic_mods_release) && self.synthetic_mods != egui::Modifiers::NONE {
             self.synthetic_mods = egui::Modifiers::NONE;
@@ -1642,5 +1652,20 @@ mod cache_tests {
     }
 }
 
+/// egui-winit reports a lifted finger (or pencil) as a button release and a `PointerGone` in the
+/// same frame, so in the frame where the tap becomes a click the pointer has no position, and
+/// whatever checks where a click landed by hover misses taps: egui's menus close after a click on
+/// an item only when it's hovered, so a tapped submenu item left the menu open. Hold a
+/// `PointerGone` that follows a release back to the next frame (`deferred`); the caller repaints.
+pub(crate) fn defer_touch_pointer_gone(deferred: &mut bool, raw: &mut egui::RawInput) {
+    if std::mem::take(deferred) {
+        raw.events.insert(0, egui::Event::PointerGone);
+    }
+    let Some(release) = raw.events.iter().rposition(|e| matches!(e, egui::Event::PointerButton { pressed: false, .. })) else { return };
+    if let Some(gone) = raw.events.iter().rposition(|e| matches!(e, egui::Event::PointerGone)).filter(|g| *g > release) {
+        raw.events.remove(gone);
+        *deferred = true;
+    }
+}
 #[cfg(test)]
 mod tests_model_setup;

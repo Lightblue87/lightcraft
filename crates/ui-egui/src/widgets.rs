@@ -31,6 +31,20 @@ pub fn escape_taken(ctx: &egui::Context) -> bool {
     ctx.data(|d| d.get_temp::<u64>(egui::Id::new("lc-escape-taken"))) == Some(ctx.cumulative_frame_nr())
 }
 
+/// How far from a handle (crop corner, curve point, mask pin …) a press still grabs it: `mouse`
+/// points with a mouse or trackpad, and at least 22 (a 44-point target, the iOS / Android minimum)
+/// once the screen has been touched, finger or pencil.
+pub fn grab_radius(ctx: &egui::Context, mouse: f32) -> f32 {
+    if ctx.input(|i| i.has_touch_screen()) { mouse.max(22.0) } else { mouse }
+}
+
+/// Where the drag that `resp` reports as started was pressed. By then the pointer has moved past
+/// the drag threshold (by touch often well past it, one event can be a long way), so hit tests
+/// and stroke starts use this, not the current position.
+pub fn press_pos(ui: &egui::Ui, resp: &egui::Response) -> Option<egui::Pos2> {
+    ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos())
+}
+
 pub fn take_registry(ctx: &egui::Context) -> Vec<(String, Rect)> {
     ctx.data_mut(|d| std::mem::take(&mut d.get_temp_mut_or_default::<Registry>(egui::Id::new("lc-registry")).0))
 }

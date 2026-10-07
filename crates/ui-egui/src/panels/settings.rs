@@ -36,7 +36,11 @@ const LABEL_W: f32 = 150.0;
 /// The dialog body for `tab` (the tab bar switches `tab`).
 pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, tab: &mut String) {
     let t = Tokens::get(ui.ctx());
-    ui.set_min_width(super::compact::dialog_width(ui.ctx(), 560.0, 16.0));
+    let width = super::compact::dialog_width(ui.ctx(), 560.0, 16.0);
+    ui.set_min_width(width);
+    // long values (the library's path, deep in an iOS app container) truncate instead of
+    // widening the dialog past the screen
+    ui.set_max_width(width);
     ui.set_min_height(330.0);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
@@ -117,7 +121,7 @@ fn general_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
         None => crate::i18n::tr("In memory — nothing is saved").to_string(),
     };
     row(ui, t, crate::i18n::tr("Location"), |ui| {
-        ui.label(RichText::new(location).color(t.text));
+        ui.add(egui::Label::new(RichText::new(&location).color(t.text)).truncate()).on_hover_text(&location);
     });
     row(ui, t, "", |ui| {
         let can = app.services.pick_folder.is_some();
