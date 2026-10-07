@@ -280,6 +280,12 @@ impl Headless {
     }
 
     /// Run one frame.
+    /// Queue raw input for the next [`Self::step`] (touch gestures, which the control protocol
+    /// has no requests for).
+    pub fn input(&mut self, events: impl IntoIterator<Item = egui::Event>) {
+        self.events.extend(events);
+    }
+
     pub fn step(&mut self) {
         (self.size, self.pixels_per_point) = bounded_viewport(self.size, self.pixels_per_point);
         let mut raw = HeadlessView::raw_input(self.size, self.pixels_per_point, self.time, std::mem::take(&mut self.events));

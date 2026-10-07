@@ -142,3 +142,95 @@ fn desktop_width_dialogs_keep_their_size() {
     let r = dialog_rect(&h).expect("label names");
     assert!(r.width() < 600.0, "an ordinary dialog stays compact on the desktop: {r:?}");
 }
+
+fn exposure(h: &Headless) -> f64 {
+    let id = h.app.session.active().expect("a photo in Detail");
+    h.app.session.develop_of(id).unwrap_or_default().light.exposure
+}
+
+/// The edit sheet scrolled (mouse wheel) so the Light sliders are clear of the bottom bar; the
+/// Exposure track's rectangle.
+fn exposure_in_view(h: &mut Headless) -> egui::Rect {
+    let sheet = widget(h, "panel:sheet").expect("the edit sheet");
+    let r = h.request("ui.move", json!({"x": sheet.center().x, "y": sheet.center().y}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let r = h.request("ui.scroll", json!({"dy": -220.0}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..30 {
+        h.step();
+    }
+    let track = widget(h, "slider:light.exposure").expect("the Exposure slider");
+    assert!(track.bottom() < sheet.bottom() - 60.0, "Exposure scrolled into view: {track:?} in {sheet:?}");
+    track
+}
+
+/// One finger from `from` to `to` in `steps` moves, then lifted.
+fn touch_drag(h: &mut Headless, from: egui::Pos2, to: egui::Pos2, steps: usize) {
+    let touch = |phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos, force: None };
+    let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    h.input([touch(egui::TouchPhase::Start, from), egui::Event::PointerMoved(from), button(from, true)]);
+    h.step();
+    for i in 1..=steps {
+        let p = from + (to - from) * (i as f32 / steps as f32);
+        h.input([touch(egui::TouchPhase::Move, p), egui::Event::PointerMoved(p)]);
+        h.step();
+    }
+    h.input([touch(egui::TouchPhase::End, to), button(to, false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+}
+
+#[test]
+fn touch_swipe_up_on_a_slider_scrolls_the_sheet_instead() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
+    let before = exposure(&h);
+    let track = exposure_in_view(&mut h);
+    // start on the track, left of the thumb, and swipe up
+    let from = egui::pos2(track.left() + 20.0, track.center().y);
+    touch_drag(&mut h, from, from - egui::vec2(4.0, 160.0), 16);
+    assert_eq!(exposure(&h), before, "the value didn't move");
+    let moved = widget(&h, "slider:light.exposure").expect("still on screen or scrolled");
+    assert!(moved.top() < track.top() - 100.0, "the sheet scrolled: {track:?} → {moved:?}");
+}
+
+#[test]
+fn touch_swipe_sideways_on_a_slider_adjusts_it_by_the_distance() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
+    let before = exposure(&h);
+    let track = exposure_in_view(&mut h);
+    // from near the left end, 40 pt right: by touch the value moves by 40 pt's worth, rather
+    // than jumping to the finger (which would set it near the minimum)
+    let from = egui::pos2(track.left() + 10.0, track.center().y);
+    touch_drag(&mut h, from, from + egui::vec2(40.0, 2.0), 8);
+    let after = exposure(&h);
+    let spec = lightcraft_develop::controls::find("light.exposure").expect("exposure spec");
+    let expected = 40.0 / track.width() as f64 * (spec.max - spec.min);
+    assert!(after > before, "it went up: {before} → {after}");
+    assert!((after - before - expected).abs() < expected * 0.4, "by about {expected}: {before} → {after}");
+    // the slider stayed put: no scrolling
+    assert_eq!(widget(&h, "slider:light.exposure").map(|r| r.top()), Some(track.top()));
+}
+
+#[test]
+fn touch_tap_on_a_slider_leaves_the_value() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
+    let before = exposure(&h);
+    let track = exposure_in_view(&mut h);
+    let at = egui::pos2(track.left() + 10.0, track.center().y);
+    touch_drag(&mut h, at, at, 0);
+    assert_eq!(exposure(&h), before);
+}
+
+#[test]
+fn mouse_click_on_a_slider_still_sets_the_value_there() {
+    // no touch input in this session: the desktop behaviour
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
+    let before = exposure(&h);
+    let track = exposure_in_view(&mut h);
+    let r = h.request("ui.click", json!({"x": track.left() + 2.0, "y": track.center().y}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(exposure(&h) < before - 1.0, "set near the minimum: {before} → {}", exposure(&h));
+}

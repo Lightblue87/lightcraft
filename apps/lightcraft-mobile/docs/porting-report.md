@@ -144,7 +144,7 @@ same desktop UI.
 2. The **winit/UIScene** blocker is solved in the shell; that leaves no hard blockers.
 3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
    That benefits the web build on tablets too.
-4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area, a three-across grid and phone-sized dialogs. Still to do: touch gestures (pinch, swipe between photos), keeping slider drags from fighting scrolling, and keeping the soft keyboard off text fields.
+4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area, a three-across grid and phone-sized dialogs. Slider drags no longer fight scrolling: by touch, the first movement decides between adjusting and scrolling. Still to do: touch gestures (pinch, swipe between photos) and keeping the soft keyboard off text fields.
 
 ## Spike artifacts
 

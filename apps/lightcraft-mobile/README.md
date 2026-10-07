@@ -42,6 +42,9 @@ browsers:
 - **My Photos:** a full-width drawer that closes when you pick a source.
 - **Grid:** about three thumbnails across.
 - **Bottom bar:** view modes, Sort, Filmstrip and an Edit toggle.
+- **Sliders by touch:** a drag that starts sideways adjusts the slider by the distance moved;
+  one that starts up or down scrolls the panel, even when it begins on a slider's track. A tap
+  doesn't change the value, and double-tap resets. Mouse and trackpad work as on the desktop.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
   when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
   preview stacks above its options, and the Shortcuts table scrolls sideways.
@@ -61,9 +64,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
   dialogs (see below). There's no landscape-specific arrangement, and the soft keyboard can
   cover a dialog's text field.
-- **Touch.** A swipe that starts on a slider's track moves the slider, not the sheet. There's
-  no pinch zoom, some controls appear only on hover, and the desktop layout's hit targets are
-  small.
+- **Touch.** There's no pinch zoom, some controls appear only on hover, and the desktop
+  layout's hit targets are small. The tone curve and color wheels still take every drag that
+  starts on them, since they're two-dimensional controls.
 - **No pickers, sharing or memory budget yet.** All `Services` except export writing are
   `None`, so nothing can be imported beyond the demo photos.
 - **Android.** The window uses GL, because the emulator's Vulkan surface fails to configure;

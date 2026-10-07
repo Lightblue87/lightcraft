@@ -153,6 +153,16 @@ pub struct SliderOut {
     pub reset: bool,
 }
 
+/// How a touch drag that started on a slider's track is being used (decided by its first
+/// movement, kept until the finger lifts).
+#[derive(Clone, Copy, PartialEq)]
+enum TouchDrag {
+    /// Mostly sideways: adjusts the value, by the distance moved (no jump to the finger).
+    Adjust,
+    /// Mostly up or down: scrolls the panel the slider is in; the value is left alone.
+    Scroll,
+}
+
 /// What a value typed into a slider asks for (issue #322): a number such as `0.5`, `+12`, `-1,5`
 /// (comma or point) or `5600 K`, on the control's steps and clamped to its range. `None` when it
 /// isn't a finite number, so the slider keeps its value.
@@ -173,6 +183,10 @@ pub(crate) fn shown_value(spec: &ControlSpec, v: f64) -> String {
 /// A Lightroom slider row (label + value above a track with a hollow ring thumb).
 /// Double-click the label or thumb to reset. Shift-drag = fine adjustment. Click the value to
 /// type one: Return or clicking away applies it, Esc keeps the old one.
+///
+/// By touch, a drag that starts on the track adjusts the value only when it starts sideways; one
+/// that starts up or down scrolls the panel instead, and a tap doesn't move the value (on a phone
+/// the sliders fill the panel, so scrolling would otherwise keep changing them).
 pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_override: Option<&str>) -> SliderOut {
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width();
@@ -206,6 +220,16 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     let to_x = |v: f64| track_rect.left() + ((v - spec.min) / span).clamp(0.0, 1.0) as f32 * track_rect.width();
     let from_x = |x: f32| spec.min + ((x - track_rect.left()) / track_rect.width()).clamp(0.0, 1.0) as f64 * span;
     let mut v = value;
+    let touch_id = id.with("touch-drag");
+    if resp.drag_started() && ui.input(|i| i.any_touches()) {
+        let moved = ui.input(|i| i.pointer.interact_pos().zip(i.pointer.press_origin()).map(|(p, o)| p - o)).unwrap_or_default();
+        let kind = if moved.y.abs() > moved.x.abs() { TouchDrag::Scroll } else { TouchDrag::Adjust };
+        ui.ctx().data_mut(|d| d.insert_temp(touch_id, kind));
+    }
+    let touch_drag = ui.ctx().data(|d| d.get_temp::<TouchDrag>(touch_id));
+    if resp.drag_stopped() || !(resp.dragged() || resp.drag_started()) {
+        ui.ctx().data_mut(|d| d.remove::<TouchDrag>(touch_id));
+    }
     if let Some((mut text, frames)) = typing.take() {
         // a child over the value, so the field never moves the rows around it
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(value_rect).layout(egui::Layout::right_to_left(egui::Align::Center)));
@@ -235,6 +259,11 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
             typing = Some((text.clone(), frames));
             ui.data_mut(|m| m.insert_temp(typing_id, (text, frames)));
         }
+    } else if touch_drag == Some(TouchDrag::Scroll) {
+        if resp.dragged() || resp.drag_started() {
+            let delta = ui.input(|i| i.pointer.delta());
+            ui.scroll_with_delta_animation(vec2(0.0, delta.y), egui::style::ScrollAnimation::none());
+        }
     } else if resp.double_clicked() || label_resp.double_clicked() {
         out.reset = true;
         out.value = Some(spec.default);
@@ -247,9 +276,10 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
             && let Some(p) = resp.interact_pointer_pos()
         {
             let fine = ui.input(|i| i.modifiers.shift);
-            let nv = if fine {
+            let nv = if fine || touch_drag == Some(TouchDrag::Adjust) {
+                // relative: by the distance moved (a tenth of it with ⇧)
                 let dx = ui.input(|i| i.pointer.delta().x);
-                value + dx as f64 * span / track_rect.width() as f64 * 0.1
+                value + dx as f64 * span / track_rect.width() as f64 * if fine { 0.1 } else { 1.0 }
             } else {
                 from_x(p.x)
             };
@@ -260,6 +290,7 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
                 v = nv;
             }
         } else if resp.clicked()
+            && !ui.input(|i| i.has_touch_screen())
             && let Some(p) = resp.interact_pointer_pos()
         {
             let step = spec.step.max(1e-9);
