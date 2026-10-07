@@ -121,3 +121,160 @@ pub fn logcat(level: log::Level, text: &str) {
         ndk_sys::__android_log_write(prio.0 as std::ffi::c_int, c"LightCraft".as_ptr(), text.as_ptr());
     }
 }
+
+/// Woken (repainted) when the soft keyboard queues edits; see [`register_wake`].
+static WAKE: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
+
+/// `LightCraftActivity.nativeWake()`: the keyboard queued edits (any thread).
+extern "system" fn native_wake<'local>(_env: jni::EnvUnowned<'local>, _this: JObject<'local>) {
+    if let Some(ctx) = WAKE.get() {
+        ctx.request_repaint();
+    }
+}
+
+/// Have the activity wake `ctx` when the soft keyboard types. NativeActivity loads the library
+/// itself, not through `System.loadLibrary`, so the JVM can't find `Java_…` symbols in it: the
+/// native method is registered by hand.
+pub fn register_wake(app: &AndroidApp, ctx: &egui::Context) {
+    let _ = WAKE.set(ctx.clone());
+    let r = with_activity(app, |env, activity| {
+        let class = env.get_object_class(activity)?;
+        // SAFETY: `native_wake` is an instance method taking no arguments and returning nothing,
+        // matching `()V`
+        unsafe {
+            let m = jni::NativeMethod::from_raw_parts(jni_str!("nativeWake"), jni_str!("()V"), native_wake as *mut std::ffi::c_void);
+            env.register_native_methods(&class, &[m])
+        }
+    });
+    if let Err(e) = r {
+        log::warn!("text input: registering the wake-up: {e}");
+    }
+}
+
+/// An egui text field got focus: the soft keyboard types into the activity's text input
+/// (`TextInput.java`), with composing text and suggestions.
+pub fn start_text_input(app: &AndroidApp) {
+    if let Err(e) = with_activity(app, |env, activity| env.call_method(activity, jni_str!("startTextInput"), jni_sig!("()V"), &[]).map(drop)) {
+        log::warn!("text input: {e}");
+    }
+}
+
+/// No egui text field has focus: the keyboard goes away.
+pub fn stop_text_input(app: &AndroidApp) {
+    if let Err(e) = with_activity(app, |env, activity| env.call_method(activity, jni_str!("stopTextInput"), jni_sig!("()V"), &[]).map(drop)) {
+        log::warn!("text input: {e}");
+    }
+}
+
+/// The soft keyboard's edits since the last call, as egui IME events.
+pub fn take_text_input(app: &AndroidApp) -> Vec<egui::ImeEvent> {
+    let r = with_activity(app, |env, activity| {
+        let edits = env.call_method(activity, jni_str!("takeTextInput"), jni_sig!("()[Ljava/lang/String;"), &[])?.l()?;
+        if edits.is_null() {
+            return Ok(Vec::new());
+        }
+        // SAFETY: takeTextInput returns a String[]
+        let edits = unsafe { JObjectArray::<JString>::from_raw(env, edits.into_raw()) };
+        let mut out = Vec::new();
+        for i in 0..edits.len(env)? {
+            let s = edits.get_element(env, i)?;
+            out.extend(ime_event(&s.try_to_string(env)?));
+        }
+        Ok(out)
+    });
+    r.unwrap_or_else(|e| {
+        log::warn!("text input: {e}");
+        Vec::new()
+    })
+}
+
+/// One edit queued by `TextInput.java` (`P<text>`, `C<text>`, `D<before>,<after>`) as an egui
+/// IME event.
+pub fn ime_event(edit: &str) -> Option<egui::ImeEvent> {
+    let mut chars = edit.chars();
+    let kind = chars.next()?;
+    let rest = chars.as_str();
+    match kind {
+        'P' => Some(egui::ImeEvent::Preedit { text: rest.to_string(), active_range_chars: None }),
+        'C' => Some(egui::ImeEvent::Commit(rest.to_string())),
+        'D' => {
+            let (b, a) = rest.split_once(',')?;
+            Some(egui::ImeEvent::DeleteSurrounding { before_chars: b.parse().ok()?, after_chars: a.parse().ok()? })
+        }
+        _ => None,
+    }
+}
+
+/// The system's CJK font (Noto Sans CJK: Hangul, kana and Han), mapped read-only: its 30 MB stay
+/// clean file pages the system can drop and reload, not app memory. `index` picks the region's
+/// face (0 Japanese, 1 Korean, 2 Simplified Chinese, 3 Traditional Chinese).
+pub fn system_cjk_font() -> Option<(&'static [u8], u32)> {
+    let path = c"/system/fonts/NotoSansCJK-Regular.ttc";
+    // SAFETY: plain libc calls on a NUL-terminated path; the mapping is checked, kept for the
+    // process's life (the slice is 'static) and never written: the file is on the read-only
+    // system partition, so it can't change under the mapping
+    unsafe {
+        let fd = libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC);
+        if fd < 0 {
+            return None;
+        }
+        let mut st: libc::stat = std::mem::zeroed();
+        let len = if libc::fstat(fd, &mut st) == 0 { st.st_size as usize } else { 0 };
+        let p = if len > 0 { libc::mmap(std::ptr::null_mut(), len, libc::PROT_READ, libc::MAP_PRIVATE, fd, 0) } else { libc::MAP_FAILED };
+        libc::close(fd);
+        if p == libc::MAP_FAILED {
+            return None;
+        }
+        Some((std::slice::from_raw_parts(p.cast::<u8>(), len), cjk_face(&system_locale())))
+    }
+}
+
+/// The Noto Sans CJK face for `locale` (BCP 47, e.g. `ko-KR`): shared Han characters take that
+/// region's forms. Japanese (Noto's default face) for everything else.
+fn cjk_face(locale: &str) -> u32 {
+    let l = locale.replace('_', "-");
+    match l.split('-').next().unwrap_or("") {
+        "ko" => 1,
+        "zh" if ["Hant", "TW", "HK", "MO"].iter().any(|t| l.split('-').any(|p| p == *t)) => 3,
+        "zh" => 2,
+        _ => 0,
+    }
+}
+
+/// The system's locale (`persist.sys.locale`, else the product's), e.g. `ko-KR`.
+fn system_locale() -> String {
+    let get = |name: &std::ffi::CStr| {
+        let mut buf = [0 as std::ffi::c_char; 92]; // PROP_VALUE_MAX
+        // SAFETY: bionic's property getter writes at most PROP_VALUE_MAX bytes, NUL-terminated
+        let n = unsafe { libc::__system_property_get(name.as_ptr(), buf.as_mut_ptr()) };
+        // SAFETY: NUL-terminated by the call above (or all zeros)
+        (n > 0).then(|| unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_string_lossy().into_owned())
+    };
+    get(c"persist.sys.locale").or_else(|| get(c"ro.product.locale")).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cjk_faces_follow_the_locale() {
+        use super::cjk_face;
+        assert_eq!(cjk_face("ko-KR"), 1);
+        assert_eq!(cjk_face("zh-Hant-TW"), 3);
+        assert_eq!(cjk_face("zh-TW"), 3);
+        assert_eq!(cjk_face("zh-Hans-CN"), 2);
+        assert_eq!(cjk_face("ja-JP"), 0);
+        assert_eq!(cjk_face("en-US"), 0);
+    }
+
+    #[test]
+    fn edits_become_ime_events() {
+        use super::ime_event;
+        use egui::ImeEvent;
+        assert_eq!(ime_event("P한글"), Some(ImeEvent::Preedit { text: "한글".into(), active_range_chars: None }));
+        assert_eq!(ime_event("Chello"), Some(ImeEvent::Commit("hello".into())));
+        assert_eq!(ime_event("C"), Some(ImeEvent::Commit(String::new())));
+        assert_eq!(ime_event("D2,1"), Some(ImeEvent::DeleteSurrounding { before_chars: 2, after_chars: 1 }));
+        assert_eq!(ime_event("D2"), None);
+        assert_eq!(ime_event(""), None);
+    }
+}

@@ -56,3 +56,5 @@ wgpu = { workspace = true, features = ["gles"] }
 jni = "0.22"
 # logcat (src/android_jni.rs): the version android-activity uses
 ndk-sys = "0.6"
+# mapping the system CJK font (src/android_jni.rs)
+libc = "0.2"

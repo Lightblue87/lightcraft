@@ -104,6 +104,16 @@ browsers:
   `getWindowVisibleDisplayFrame` with the window's bounds over JNI
   (`src/android_jni.rs`), which also keeps the UI clear of the navigation bar. Either way
   the result becomes egui's safe-area insets.
+- **Typing on Android (IME):** NativeActivity's view has no input connection, so keyboards fall
+  back to key events: no composing. While an egui text field has focus, the keyboard types
+  into an invisible editor view instead (`android/java/…/TextInput.java`). Its input connection
+  keeps a copy of what was typed, which the keyboard reads for suggestions, and reports the
+  cursor to the keyboard after every edit. Composing text, commits, deletions and re-opened
+  words are queued, wake the app over a JNI-registered native method, and become egui IME
+  events (`Preedit`, `Commit`, `DeleteSurrounding`). Keys the keyboard sends (Delete with
+  nothing to delete, Enter) still arrive as key events. Korean (Gboard 2-set) composes
+  syllable by syllable, and backspace decomposes them. Text in scripts the bundled fonts lack
+  shows in the system's Noto Sans CJK, memory-mapped and picked for the device's locale.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
   when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
   preview stacks above its options, and the Shortcuts table scrolls sideways.
@@ -118,6 +128,10 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 |---|---|---|---|---|
 | ![picker](docs/screens/phone-picker.jpg) | ![import](docs/screens/phone-import.jpg) | ![android import](docs/screens/android-import.jpg) | ![share](docs/screens/phone-share.jpg) | ![android share](docs/screens/android-share.jpg) |
 
+| Composing Korean (Android) |
+|---|
+| ![ime](docs/screens/android-ime.jpg) |
+
 ## Known problems
 
 - **iOS scene lifecycle is adopted by the shell, not winit.** winit 0.30 has no UIScene support,
@@ -127,10 +141,13 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
   dialogs (see below). There's no landscape-specific arrangement.
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
-  On Android the insets are polled (about 12 times a second while typing, twice a second
-  otherwise), so the layout follows the keyboard a moment late. Typing goes through
-  NativeActivity's key events, which works for plain text. Composing input (CJK, autocorrect,
-  swipe typing) is untested and probably doesn't work. Full IME support needs GameActivity.
+  On Android the insets are polled (about 10 times a second while typing and for a second
+  after, twice a second otherwise), so the layout follows the keyboard a moment late. The
+  keyboard's copy of the text starts empty when a field gets focus, so suggestions don't see
+  text from before then, and moving the cursor in egui doesn't reach the keyboard. Composing was
+  verified with Korean on Gboard. English on the emulator's Gboard commits letter by letter (as it
+  does in a stock `EditText` there), so English autocorrect and swipe typing are still
+  unverified, and Japanese/Chinese keyboards weren't tried.
 - **Touch.** Some controls appear only on hover, and the desktop layout's hit targets are
   small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that

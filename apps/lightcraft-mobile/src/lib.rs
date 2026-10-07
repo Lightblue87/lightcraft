@@ -35,6 +35,13 @@ struct App {
     /// When the window insets were last read (egui time, s).
     #[cfg(target_os = "android")]
     insets_polled: f64,
+    /// The text field the soft keyboard types into (see `android_jni::start_text_input`).
+    #[cfg(target_os = "android")]
+    text_input: Option<egui::Id>,
+    /// Until when (egui time, s) the insets are read often after the keyboard went away: it
+    /// slides out after the last frame, and nothing else would draw one.
+    #[cfg(target_os = "android")]
+    insets_settle: f64,
 }
 
 impl App {
@@ -48,6 +55,10 @@ impl App {
             keyboard: 0.0,
             #[cfg(target_os = "android")]
             insets_polled: f64::NEG_INFINITY,
+            #[cfg(target_os = "android")]
+            text_input: None,
+            #[cfg(target_os = "android")]
+            insets_settle: f64::NEG_INFINITY,
         }
     }
 
@@ -74,11 +85,8 @@ impl App {
     /// signals a change.
     #[cfg(target_os = "android")]
     fn window_insets(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        let typing = ctx.egui_wants_keyboard_input();
-        if typing {
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        }
         let now = raw.time.unwrap_or_default();
+        let typing = ctx.egui_wants_keyboard_input() || now < self.insets_settle;
         if now < self.insets_polled + if typing { 0.08 } else { 0.5 } {
             return;
         }
@@ -91,6 +99,45 @@ impl App {
         if insets != self.insets {
             self.insets = insets;
             raw.safe_area_insets = Some(insets);
+        }
+    }
+}
+
+/// Android: the soft keyboard follows egui's text fields. While one has focus (it asks for IME
+/// input), the keyboard types into the activity's own text input, which supports composing
+/// (CJK, Korean, Indic scripts), autocorrect and swipe typing; its edits arrive as egui IME events
+/// (see `android_jni`). NativeActivity's own view only gets key events.
+#[cfg(target_os = "android")]
+impl App {
+    /// After a frame: start, move or stop the text input with the focused text field.
+    fn follow_text_field(&mut self, ctx: &egui::Context) {
+        // the window insets are polled before frames (see `window_insets`): keep frames coming
+        // while the keyboard can move (requested here, in the frame, so it isn't used up by it)
+        if ctx.egui_wants_keyboard_input() || ctx.input(|i| i.time) < self.insets_settle {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let Some(android) = ANDROID_APP.get() else { return };
+        let wanted = ctx.output(|o| o.ime.is_some()).then(|| ctx.memory(|m| m.focused())).flatten();
+        if wanted == self.text_input {
+            return;
+        }
+        match wanted {
+            Some(_) => android_jni::start_text_input(android),
+            None => {
+                android_jni::stop_text_input(android);
+                self.insets_settle = ctx.input(|i| i.time) + 1.0;
+            }
+        }
+        self.text_input = wanted;
+    }
+
+    /// Before a frame: the keyboard's edits since the last one.
+    fn text_input_events(&mut self, raw: &mut egui::RawInput) {
+        if self.text_input.is_none() {
+            return;
+        }
+        if let Some(android) = ANDROID_APP.get() {
+            raw.events.extend(android_jni::take_text_input(android).into_iter().map(egui::Event::Ime));
         }
     }
 }
@@ -146,11 +193,16 @@ impl eframe::App for App {
         #[cfg(target_os = "ios")]
         self.keyboard_inset(raw);
         #[cfg(target_os = "android")]
-        self.window_insets(_ctx, raw);
+        {
+            self.window_insets(_ctx, raw);
+            self.text_input_events(raw);
+        }
         self.app.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        #[cfg(target_os = "android")]
+        self.follow_text_field(ui.ctx());
     }
     fn on_exit(&mut self) {
         if let Err(e) = self.app.session.close_library() {
@@ -245,6 +297,18 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             #[cfg(target_os = "ios")]
             if let Ok(h) = raw_window_handle::HasWindowHandle::window_handle(_cc) {
                 ios_scene::set_window(h.as_raw());
+            }
+            #[cfg(target_os = "android")]
+            {
+                if let Some(android) = ANDROID_APP.get() {
+                    android_jni::register_wake(android, &_cc.egui_ctx);
+                }
+                // CJK typed with the keyboard (and Korean, which no bundled font has) shows in the
+                // system's CJK font rather than as boxes
+                if let Some((bytes, index)) = android_jni::system_cjk_font() {
+                    let font = egui::FontData { index, ..egui::FontData::from_static(bytes) };
+                    lightcraft_ui_egui::theme::add_fallback_font("system CJK", font);
+                }
             }
             #[cfg(target_os = "ios")]
             {

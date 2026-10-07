@@ -10,6 +10,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -18,7 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * NativeActivity plus the photo picker and the share sheet. NativeActivity can't host the picker: it never sees
+ * NativeActivity plus the photo picker, the share sheet and the soft keyboard's text input
+ * ({@link TextInput}). NativeActivity can't host the picker: it never sees
  * onActivityResult. The Rust shell calls {@link #pickPhotos} over JNI and polls
  * {@link #takePicked}; each chosen photo is copied into {@code dir} on a background thread first.
  * HEIC/HEIF (which LightCraft can't decode yet) is converted to JPEG.
@@ -82,6 +85,67 @@ public class LightCraftActivity extends NativeActivity {
                 startActivity(Intent.createChooser(send, null));
             }
         });
+    }
+
+    private volatile TextInput textInput;
+
+    /** Wakes the Rust event loop (registered by the shell over JNI; see {@code android_jni}). */
+    private native void nativeWake();
+
+    /**
+     * An egui text field got focus: the soft keyboard types into {@link TextInput} (composing
+     * text, suggestions), starting afresh.
+     */
+    public void startTextInput() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (textInput == null) {
+                    textInput = new TextInput(LightCraftActivity.this, new TextInput.Wake() {
+                        @Override
+                        public void wake() {
+                            try {
+                                nativeWake();
+                            } catch (Throwable ignored) {
+                                // not registered yet: the shell polls anyway
+                            }
+                        }
+                    });
+                    addContentView(textInput, new ViewGroup.LayoutParams(1, 1));
+                }
+                TextInput t = textInput;
+                t.clear();
+                t.setFocusable(true);
+                t.setFocusableInTouchMode(true);
+                t.requestFocus();
+                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                imm.restartInput(t);
+                imm.showSoftInput(t, 0);
+            }
+        });
+    }
+
+    /** No egui text field has focus any more: the keyboard goes away. */
+    public void stopTextInput() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextInput t = textInput;
+                if (t == null) return;
+                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                imm.hideSoftInputFromWindow(t.getWindowToken(), 0);
+                // not focusable, or focus would come straight back to it
+                t.setFocusable(false);
+                t.clearFocus();
+                t.clear();
+            }
+        });
+    }
+
+    /** The keyboard's edits since the last call (see {@link TextInput}). */
+    public String[] takeTextInput() {
+        TextInput t = textInput;
+        return t == null ? new String[0] : t.take();
     }
 
     private volatile int trimLevel;

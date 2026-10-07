@@ -3253,6 +3253,7 @@ dependencies = [
  "eframe",
  "egui",
  "jni",
+ "libc",
  "lightcraft-codecs",
  "lightcraft-engine",
  "lightcraft-gpu",

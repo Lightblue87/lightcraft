@@ -129,6 +129,18 @@ impl Tokens {
     }
 }
 
+/// Fonts the host adds as the last fallback of every family (see [`add_fallback_font`]).
+static HOST_FALLBACKS: std::sync::Mutex<Vec<(String, Arc<FontData>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Add `font` as the last fallback of every family, from the next [`install_fonts`] on: e.g. a
+/// phone's system CJK font, so text typed in a script the bundled fonts don't cover (Korean,
+/// or any CJK without craft-fonts) shows instead of boxes.
+pub fn add_fallback_font(name: &str, font: FontData) {
+    let mut v = HOST_FALLBACKS.lock().unwrap_or_else(|e| e.into_inner());
+    v.retain(|(n, _)| n != name);
+    v.push((name.to_string(), Arc::new(font)));
+}
+
 pub fn install_fonts(ctx: &egui::Context) {
     install_fonts_with_chinese(ctx, None);
 }
@@ -194,6 +206,12 @@ pub fn font_definitions_with_chinese(craft: &'static [lightcraft_engine::CraftFo
         mono_fallback.push(WEB_CHINESE_FONT.into());
     }
     mono.extend(mono_fallback);
+    for (name, font) in HOST_FALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        fonts.font_data.insert(name.clone(), font.clone());
+        for family in [FontFamily::Proportional, FontFamily::Name(FONT_SEMIBOLD.into()), FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().push(name.clone());
+        }
+    }
     fonts
 }
 
@@ -346,5 +364,21 @@ mod tests {
         assert_eq!(names.get(1 + default_count).map(String::as_str), Some("craft-fonts BIZ UDPGothic Regular"));
         assert_eq!(names.get(2 + default_count).map(String::as_str), Some(WEB_CHINESE_FONT));
         set_language(Locale::En);
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    #[test]
+    fn host_fallback_fonts_come_last_in_every_family() {
+        // (Inter's bytes under another name: harmless to the other tests in this process)
+        add_fallback_font("test fallback", FontData::from_static(include_bytes!("../../../assets/fonts/Inter-Regular.ttf")));
+        let defs = font_definitions(&[]);
+        assert!(defs.font_data.contains_key("test fallback"));
+        for family in [FontFamily::Proportional, FontFamily::Name(FONT_SEMIBOLD.into()), FontFamily::Monospace] {
+            assert_eq!(defs.families[&family].last().map(String::as_str), Some("test fallback"), "{family:?}");
+        }
     }
 }
