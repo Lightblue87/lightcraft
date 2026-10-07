@@ -35,9 +35,12 @@ struct App {
     /// When the window insets were last read (egui time, s).
     #[cfg(target_os = "android")]
     insets_polled: f64,
-    /// The text field the soft keyboard types into (see `android_jni::start_text_input`).
+    /// The text field the soft keyboard types into (see `android_jni::start_text_input`), and
+    /// what the keyboard was last told about it.
     #[cfg(target_os = "android")]
     text_input: Option<egui::Id>,
+    #[cfg(target_os = "android")]
+    field: android_jni::Field,
     /// Until when (egui time, s) the insets are read often after the keyboard went away: it
     /// slides out after the last frame, and nothing else would draw one.
     #[cfg(target_os = "android")]
@@ -57,6 +60,8 @@ impl App {
             insets_polled: f64::NEG_INFINITY,
             #[cfg(target_os = "android")]
             text_input: None,
+            #[cfg(target_os = "android")]
+            field: android_jni::Field::default(),
             #[cfg(target_os = "android")]
             insets_settle: f64::NEG_INFINITY,
         }
@@ -118,11 +123,38 @@ impl App {
         }
         let Some(android) = ANDROID_APP.get() else { return };
         let wanted = ctx.output(|o| o.ime.is_some()).then(|| ctx.memory(|m| m.focused())).flatten();
+        // the field's text, from what it reported this frame (focus, a change, a selection), and
+        // its selection, from its state
+        let reported = ctx.output(|o| {
+            o.events.iter().rev().find_map(|e| {
+                let info = e.widget_info();
+                (info.typ == egui::WidgetType::TextEdit).then(|| info.current_text_value.clone()).flatten()
+            })
+        });
+        let field = |id: egui::Id, text: String| {
+            let n = text.chars().count();
+            let selection = egui::text_edit::TextEditState::load(ctx, id)
+                .and_then(|s| s.cursor.char_range())
+                .map(|r| r.as_sorted_char_range())
+                .map_or((n, n), |r| (r.start.0.min(n), r.end.0.min(n)));
+            android_jni::Field { text, selection }
+        };
         if wanted == self.text_input {
+            if let Some(id) = wanted {
+                let f = field(id, reported.unwrap_or_else(|| self.field.text.clone()));
+                if f != self.field {
+                    android_jni::sync_text_input(android, &f);
+                    self.field = f;
+                }
+            }
             return;
         }
         match wanted {
-            Some(_) => android_jni::start_text_input(android),
+            Some(id) => {
+                // (a field that reported nothing yet starts empty; its first report syncs)
+                self.field = field(id, reported.unwrap_or_default());
+                android_jni::start_text_input(android, &self.field);
+            }
             None => {
                 android_jni::stop_text_input(android);
                 self.insets_settle = ctx.input(|i| i.time) + 1.0;

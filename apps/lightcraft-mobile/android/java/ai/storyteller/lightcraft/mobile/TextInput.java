@@ -29,6 +29,10 @@ import java.util.List;
  *
  * Key events the keyboard sends (Delete with nothing left to delete, Enter) go to the native input
  * queue like hardware keys.
+ *
+ * <p>The copy starts as the field's text and cursor ({@link #reset}) and follows changes made outside
+ * the keyboard (taps moving the cursor, keys, the field cleared: {@link #sync}), so what the keyboard
+ * reads back is what the field shows.
  */
 final class TextInput extends View {
     /** Called (on the UI thread) whenever edits were queued: the Rust side wakes its event loop. */
@@ -39,6 +43,12 @@ final class TextInput extends View {
     private final Object lock = new Object();
     private final List<String> queue = new ArrayList<>();
     private final Wake wake;
+    /** Edits queued so far, and how many of them the shell had taken at its last {@link #take}. */
+    private long queued, taken;
+    /** The field's text and selection (UTF-16) the next input connection starts from. */
+    private String text = "";
+    private int selStart, selEnd;
+    private Connection connection;
 
     TextInput(Context context, Wake wake) {
         super(context);
@@ -52,6 +62,7 @@ final class TextInput extends View {
         synchronized (lock) {
             String[] out = queue.toArray(new String[0]);
             queue.clear();
+            taken = queued;
             return out;
         }
     }
@@ -59,14 +70,63 @@ final class TextInput extends View {
     void clear() {
         synchronized (lock) {
             queue.clear();
+            taken = queued;
         }
     }
 
     private void push(String edit) {
         synchronized (lock) {
             queue.add(edit);
+            queued++;
         }
         wake.wake();
+    }
+
+    /** UTF-16 index of code point {@code cp} in {@code s} (clamped). */
+    private static int utf16(String s, int cp) {
+        return s.offsetByCodePoints(0, Math.max(0, Math.min(cp, s.codePointCount(0, s.length()))));
+    }
+
+    /**
+     * A field got focus: the next input connection starts from its text and selection ({@code a},
+     * {@code b}: code points, as egui counts). UI thread, before restarting input.
+     */
+    void reset(String text, int a, int b) {
+        clear();
+        this.text = text;
+        selStart = utf16(text, Math.min(a, b));
+        selEnd = utf16(text, Math.max(a, b));
+    }
+
+    /**
+     * The field now holds {@code text} with selection {@code a}–{@code b} (code points). When that
+     * isn't what the keyboard's edits left (the cursor moved by a tap, a key, the field cleared),
+     * the copy takes it and the keyboard is told; a composition in progress ends there (the field
+     * keeps its text). Ignored while the shell hasn't seen every edit yet: it reports a state
+     * from before them. UI thread.
+     */
+    void sync(String text, int a, int b) {
+        synchronized (lock) {
+            if (queued != taken || !queue.isEmpty()) return;
+        }
+        Connection c = connection;
+        if (c == null) {
+            reset(text, a, b);
+            return;
+        }
+        Editable e = c.getEditable();
+        int sa = utf16(text, Math.min(a, b)), sb = utf16(text, Math.max(a, b));
+        boolean same = e.toString().equals(text);
+        int cs = BaseInputConnection.getComposingSpanStart(e), ce = BaseInputConnection.getComposingSpanEnd(e);
+        if (same) {
+            int ea = Selection.getSelectionStart(e), eb = Selection.getSelectionEnd(e);
+            // the field shows a composition as its selection
+            if ((ea == sa && eb == sb) || (cs >= 0 && Math.min(cs, ce) == sa && Math.max(cs, ce) == sb)) return;
+        }
+        BaseInputConnection.removeComposingSpans(e);
+        if (!same) e.replace(0, e.length(), text);
+        Selection.setSelection(e, sa, sb);
+        c.report(true);
     }
 
     @Override
@@ -80,9 +140,14 @@ final class TextInput extends View {
         info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
         info.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN | EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 | EditorInfo.IME_ACTION_NONE;
-        info.initialSelStart = 0;
-        info.initialSelEnd = 0;
-        return new Connection();
+        Connection c = new Connection();
+        Editable e = c.getEditable();
+        e.replace(0, e.length(), text);
+        Selection.setSelection(e, selStart, selEnd);
+        info.initialSelStart = selStart;
+        info.initialSelEnd = selEnd;
+        connection = c;
+        return c;
     }
 
     /** Code points in {@code s} from {@code a} to {@code b} (UTF-16 indices, clamped). */
@@ -177,26 +242,6 @@ final class TextInput extends View {
         public boolean setSelection(int start, int end) {
             // (egui keeps its own cursor: the keyboard moving it isn't passed on)
             return report(super.setSelection(start, end));
-        }
-
-        @Override
-        public boolean sendKeyEvent(KeyEvent event) {
-            // the key goes to the native input queue (egui applies it); the shadow copy follows the
-            // deleting keys, so what the keyboard reads back stays what egui shows
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                int code = event.getKeyCode();
-                if (code == KeyEvent.KEYCODE_DEL || code == KeyEvent.KEYCODE_FORWARD_DEL) {
-                    Editable e = getEditable();
-                    int a = Math.max(0, Selection.getSelectionStart(e)), b = Math.max(a, Selection.getSelectionEnd(e));
-                    if (a == b) {
-                        if (code == KeyEvent.KEYCODE_DEL && a > 0) a = Character.offsetByCodePoints(e, a, -1);
-                        else if (code == KeyEvent.KEYCODE_FORWARD_DEL && b < e.length()) b = Character.offsetByCodePoints(e, b, 1);
-                    }
-                    if (b > a) e.delete(a, b);
-                    report(true);
-                }
-            }
-            return super.sendKeyEvent(event);
         }
 
         @Override

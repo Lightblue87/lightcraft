@@ -94,9 +94,9 @@ public class LightCraftActivity extends NativeActivity {
 
     /**
      * An egui text field got focus: the soft keyboard types into {@link TextInput} (composing
-     * text, suggestions), starting afresh.
+     * text, suggestions), starting from the field's text and selection (code points).
      */
-    public void startTextInput() {
+    public void startTextInput(final String text, final int selStart, final int selEnd) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -114,13 +114,27 @@ public class LightCraftActivity extends NativeActivity {
                     addContentView(textInput, new ViewGroup.LayoutParams(1, 1));
                 }
                 TextInput t = textInput;
-                t.clear();
+                t.reset(text, selStart, selEnd);
                 t.setFocusable(true);
                 t.setFocusableInTouchMode(true);
                 t.requestFocus();
                 InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
                 imm.restartInput(t);
                 imm.showSoftInput(t, 0);
+            }
+        });
+    }
+
+    /**
+     * The focused field's text and selection (code points) changed other than by the keyboard's
+     * edits: the keyboard's copy follows ({@link TextInput#sync}).
+     */
+    public void syncTextInput(final String text, final int selStart, final int selEnd) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextInput t = textInput;
+                if (t != null) t.sync(text, selStart, selEnd);
             }
         });
     }
