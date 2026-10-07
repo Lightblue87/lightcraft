@@ -26,16 +26,19 @@ The engine is already portable. The cost is almost entirely **UX** (touch and ph
 | Window renderer | ✅ Metal, **after** requesting adapter limits | ✅ **GL only**: Vulkan panicked in `Surface::configure` |
 | Touch slider drag → live render + histogram | ✅ | ✅ |
 | Kill −9 then relaunch keeps the edit | ✅ (1 journal record replayed) | not tested |
-| iOS 27 runtime | ❌ **crash at launch**: UIKit requires UIScene lifecycle, which winit 0.30.13 doesn't adopt | — |
+| iOS 27 runtime | ✅ after adopting UIScene in the shell (it crashed at launch before: winit 0.30.13 has no scene lifecycle) | — |
 | Phone layout | ❌ photo squeezed to ~90 pt, top bar under the Dynamic Island | — |
 | Vertical swipe scrolls the edit panel | ❌ didn't scroll | not tested |
 
 ### Blockers found by running it (not visible from reading code)
 
 1. **iOS 27 + winit 0.30 = launch crash** (`_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`).
-   Fix by upgrading or patching winit to a version that adopts UIScene, or by a custom UIKit host
-   that embeds an egui-wgpu view. It's the single biggest iOS risk, and nothing upstream has
-   been verified to fix it yet.
+   This is **fixed in the shell** and verified on the iOS 27.0 and 26.5 Simulators, including
+   background → foreground. `ios/Info.plist` declares a scene manifest, and `src/ios_scene.rs`
+   (objc2) registers the scene delegate it names. That delegate attaches the window winit created
+   to the connected scene. winit keeps getting lifecycle events from the `UIApplication…`
+   notifications, which UIKit still posts. Limits: one scene only, so no iPad multiwindow. It can
+   be removed once eframe moves to winit 0.31.
 2. **eframe's default wgpu limits are rejected** by the Simulator's Metal adapter
    (`max_inter_stage_shader_variables 16 > 15`). Fixed in the spike by setting `required_limits = adapter.limits()`.
 3. **Android emulator Vulkan surface fails.** The window has to be able to fall back to GL, but
@@ -138,7 +141,7 @@ same desktop UI.
 
 1. Go **iPad-first with Path A**. The spike shows the desktop UI is already close to usable
    on a 13" iPad, and an Apple Pencil maps well onto the brush and mask tools.
-2. Resolve the **winit/UIScene** issue first. It's the only hard blocker found.
+2. The **winit/UIScene** blocker is solved in the shell; that leaves no hard blockers.
 3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
    That benefits the web build on tablets too.
 4. Treat phones as a separate milestone that needs a real phone layout.

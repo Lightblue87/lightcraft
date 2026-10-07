@@ -32,8 +32,10 @@ If `cargo` on `PATH` isn't rustup's, set `CARGO` (for example
 
 ## Known problems
 
-- **iOS 27 crashes at launch.** winit 0.30 doesn't adopt the UIScene lifecycle. Use an iOS 26
-  runtime.
+- **iOS scene lifecycle is adopted by the shell, not winit.** winit 0.30 has no UIScene support,
+  and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
+  attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
+  (no multiwindow), and this goes away when eframe moves to winit 0.31.
 - **Phone layout.** The desktop panels squeeze the photo to a sliver, and the top bar sits
   under the status bar and Dynamic Island. There are no safe areas.
 - **Touch.** Drags fight scrolling (the edit panel doesn't scroll), there's no pinch zoom,

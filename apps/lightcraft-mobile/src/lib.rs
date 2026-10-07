@@ -8,6 +8,9 @@
 #![cfg(any(target_os = "ios", target_os = "android"))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "ios")]
+mod ios_scene;
+
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
 
@@ -75,11 +78,17 @@ fn adapter_limits(options: &mut eframe::NativeOptions) {
 pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) -> eframe::Result {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
     adapter_limits(&mut options);
+    #[cfg(target_os = "ios")]
+    ios_scene::register();
     log::info!("library at {}", library_dir.display());
     eframe::run_native(
         "LightCraft",
         options,
         Box::new(move |_cc| {
+            #[cfg(target_os = "ios")]
+            if let Ok(h) = raw_window_handle::HasWindowHandle::window_handle(_cc) {
+                ios_scene::set_window(h.as_raw());
+            }
             let mut s = Session::new().with_fs().with_system_clock();
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {

@@ -1,7 +1,6 @@
 #!/bin/sh
 # Build lightcraft-ios for the iOS Simulator, bundle it as an .app and run it on a booted
 # simulator (or the one named by $1). Needs Xcode and `rustup target add aarch64-apple-ios-sim`.
-# iOS 27 runtimes crash at launch (winit 0.30 has no UIScene lifecycle): use an iOS 26 simulator.
 set -eu
 cd "$(dirname "$0")/../../.."
 CARGO=${CARGO:-cargo}
