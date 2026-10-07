@@ -144,7 +144,7 @@ same desktop UI.
 2. The **winit/UIScene** blocker is solved in the shell; that leaves no hard blockers.
 3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
    That benefits the web build on tablets too.
-4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area, a three-across grid and phone-sized dialogs. Slider drags no longer fight scrolling: by touch, the first movement decides between adjusting and scrolling. The iOS soft keyboard lifts the layout and keeps the focused field in view. Still to do: touch gestures (pinch, swipe between photos), and the keyboard on Android.
+4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area, a three-across grid and phone-sized dialogs. Slider drags no longer fight scrolling: by touch, the first movement decides between adjusting and scrolling. The iOS soft keyboard lifts the layout and keeps the focused field in view. On Android the same happens via window insets read over JNI, which also clears the navigation bar. Still to do: touch gestures (pinch, swipe between photos), and composing-text (IME) input on Android, which needs GameActivity.
 
 ## Spike artifacts
 

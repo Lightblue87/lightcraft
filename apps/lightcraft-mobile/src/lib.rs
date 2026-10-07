@@ -8,6 +8,8 @@
 #![cfg(any(target_os = "ios", target_os = "android"))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+#[cfg(target_os = "android")]
+mod android_insets;
 #[cfg(target_os = "ios")]
 mod ios_scene;
 
@@ -18,12 +20,16 @@ struct App {
     app: LightcraftApp,
     /// The touch screen has been announced to egui (see `raw_input_hook`).
     touch_announced: bool,
-    /// The safe area as egui-winit last reported it, before the keyboard is added.
-    #[cfg(target_os = "ios")]
+    /// iOS: the safe area as egui-winit last reported it, before the keyboard is added.
+    /// Android: the insets last reported to egui.
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     insets: egui::SafeAreaInsets,
     /// The keyboard height last folded into the safe area.
     #[cfg(target_os = "ios")]
     keyboard: f32,
+    /// When the window insets were last read (egui time, s).
+    #[cfg(target_os = "android")]
+    insets_polled: f64,
 }
 
 impl App {
@@ -31,10 +37,12 @@ impl App {
         App {
             app,
             touch_announced: false,
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             insets: egui::SafeAreaInsets::default(),
             #[cfg(target_os = "ios")]
             keyboard: 0.0,
+            #[cfg(target_os = "android")]
+            insets_polled: f64::NEG_INFINITY,
         }
     }
 
@@ -53,7 +61,38 @@ impl App {
             raw.safe_area_insets = Some(insets);
         }
     }
+
+    /// Android: egui-winit reports no safe area here, so the shell does: the window edges that
+    /// system bars, the display cutout and the soft keyboard cover (see `android_insets`). With
+    /// the keyboard in the bottom inset, the layout (bottom bar, edit sheet, dialogs) sits above
+    /// it. Polled a few times a second, more often while a text field has focus, since nothing
+    /// signals a change.
+    #[cfg(target_os = "android")]
+    fn window_insets(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let typing = ctx.egui_wants_keyboard_input();
+        if typing {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let now = raw.time.unwrap_or_default();
+        if now < self.insets_polled + if typing { 0.08 } else { 0.5 } {
+            return;
+        }
+        self.insets_polled = now;
+        let Some(android) = ANDROID_APP.get() else { return };
+        let Some(px) = android_insets::window_insets(android) else { return };
+        let ppp = raw.viewports.get(&raw.viewport_id).and_then(|v| v.native_pixels_per_point).unwrap_or(1.0);
+        let [left, top, right, bottom] = px.map(|p| p as f32 / ppp);
+        let insets = egui::SafeAreaInsets(egui::epaint::MarginF32 { left, top, right, bottom });
+        if insets != self.insets {
+            self.insets = insets;
+            raw.safe_area_insets = Some(insets);
+        }
+    }
 }
+
+/// The activity, for its window insets (set once by `android_main`).
+#[cfg(target_os = "android")]
+static ANDROID_APP: std::sync::OnceLock<winit::platform::android::activity::AndroidApp> = std::sync::OnceLock::new();
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -74,6 +113,8 @@ impl eframe::App for App {
         }
         #[cfg(target_os = "ios")]
         self.keyboard_inset(raw);
+        #[cfg(target_os = "android")]
+        self.window_insets(_ctx, raw);
         self.app.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -173,6 +214,7 @@ pub fn ios_main() {
 #[unsafe(no_mangle)]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
     let dir = app.internal_data_path().unwrap_or_default().join("LightCraft Library");
+    let _ = ANDROID_APP.set(app.clone());
     let mut options = eframe::NativeOptions { android_app: Some(app), ..Default::default() };
     // GL window unless /data/local/tmp/lc_vulkan exists: the emulator's Vulkan surface fails to
     // configure ("Invalid surface"); GPU compute (lightcraft-gpu) still picks Vulkan itself

@@ -45,9 +45,12 @@ browsers:
 - **Sliders by touch:** a drag that starts sideways adjusts the slider by the distance moved;
   one that starts up or down scrolls the panel, even when it begins on a slider's track. A tap
   doesn't change the value, and double-tap resets. Mouse and trackpad work as on the desktop.
-- **Soft keyboard (iOS):** the layout moves up above the keyboard (bottom bar, sheet, dialogs),
-  and a focused text field it would cover is scrolled into view. The shell's scene delegate
-  reads the keyboard frame from UIKit and adds it to egui's bottom safe-area inset.
+- **Soft keyboard:** the layout moves up above the keyboard (bottom bar, sheet, dialogs), and a
+  focused text field it would cover is scrolled into view. On iOS the shell's scene delegate
+  reads the keyboard frame from UIKit. On Android the shell compares the decor view's
+  `getWindowVisibleDisplayFrame` with the window's bounds over JNI
+  (`src/android_insets.rs`), which also keeps the UI clear of the navigation bar. Either way
+  the result becomes egui's safe-area insets.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
   when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
   preview stacks above its options, and the Shortcuts table scrolls sideways.
@@ -66,8 +69,11 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
   dialogs (see below). There's no landscape-specific arrangement.
-- **Soft keyboard.** On Android the keyboard isn't tracked yet, so it can cover fields there.
-  On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
+- **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
+  On Android the insets are polled (about 12 times a second while typing, twice a second
+  otherwise), so the layout follows the keyboard a moment late. Typing goes through
+  NativeActivity's key events, which is fine for plain text but has no composing (IME)
+  support, so CJK input, autocorrect and swipe typing won't work. That needs GameActivity.
 - **Touch.** There's no pinch zoom, some controls appear only on hover, and the desktop
   layout's hit targets are small. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.

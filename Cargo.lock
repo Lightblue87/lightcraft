@@ -3251,6 +3251,7 @@ version = "0.5.0"
 dependencies = [
  "eframe",
  "egui",
+ "jni",
  "lightcraft-codecs",
  "lightcraft-engine",
  "lightcraft-raster",

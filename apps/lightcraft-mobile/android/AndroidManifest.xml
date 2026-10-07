@@ -4,6 +4,7 @@
   <application android:label="LightCraft" android:hasCode="false" android:extractNativeLibs="true">
     <activity android:name="android.app.NativeActivity" android:exported="true"
               android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
+              android:windowSoftInputMode="adjustResize"
               android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
       <meta-data android:name="android.app.lib_name" android:value="lightcraft_mobile"/>
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>

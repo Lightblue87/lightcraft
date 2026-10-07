@@ -44,3 +44,5 @@ eframe = { workspace = true, features = ["android-native-activity"] }
 winit = { version = "0.30", features = ["android-native-activity"] }
 # GL for the window: emulators and some devices fail to configure a Vulkan surface
 wgpu = { workspace = true, features = ["gles"] }
+# window insets over JNI (src/android_insets.rs): the version android-activity uses
+jni = "0.22"
