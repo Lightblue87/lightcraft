@@ -1012,12 +1012,13 @@ impl LightcraftApp {
         // inside the safe area (iOS: clear of the status bar, Dynamic Island and home indicator;
         // the insets are zero elsewhere), in the compact layout when that is narrow
         let content = ui.ctx().content_rect();
-        panels::compact::update(self, &ui.ctx().clone(), content.width());
-        if content == ui.max_rect() {
-            return self.layout(ui);
+        panels::compact::update(self, &ui.ctx().clone(), content);
+        if content != ui.max_rect() {
+            ui.painter().rect_filled(ui.max_rect(), 0.0, theme::Tokens::get(ui.ctx()).chrome);
         }
-        ui.painter().rect_filled(ui.max_rect(), 0.0, theme::Tokens::get(ui.ctx()).chrome);
-        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(content));
+        // always the same child, insets or not: widget ids (and with them text focus) stay put
+        // when the insets change, as when the soft keyboard comes up
+        let mut inner = ui.new_child(egui::UiBuilder::new().id_salt("safe-area").max_rect(content));
         self.layout(&mut inner);
     }
 

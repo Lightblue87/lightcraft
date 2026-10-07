@@ -224,6 +224,8 @@ pub struct Headless {
     time: f64,
     frames: u64,
     pub(crate) events: Vec<egui::Event>,
+    /// Safe-area insets to report on the next frame (a phone's notch, or its soft keyboard).
+    safe_area: Option<egui::SafeAreaInsets>,
     control: Sender<ControlRequest>,
     quit: bool,
     /// The simulated window is zoomed (`Maximized(true)` seen, reported back to the app like a real host).
@@ -257,6 +259,7 @@ impl Headless {
             time: 0.0,
             frames: 0,
             events: vec![],
+            safe_area: None,
             control: tx,
             quit: false,
             window_maximized: false,
@@ -286,12 +289,18 @@ impl Headless {
         self.events.extend(events);
     }
 
+    /// Report these safe-area insets from the next frame on (egui keeps them until changed).
+    pub fn set_safe_area(&mut self, insets: egui::SafeAreaInsets) {
+        self.safe_area = Some(insets);
+    }
+
     pub fn step(&mut self) {
         (self.size, self.pixels_per_point) = bounded_viewport(self.size, self.pixels_per_point);
         let mut raw = HeadlessView::raw_input(self.size, self.pixels_per_point, self.time, std::mem::take(&mut self.events));
         raw.viewports.entry(ViewportId::ROOT).or_default().maximized = Some(self.window_maximized);
         raw.max_texture_side = (self.reported_texture_side != Some(self.max_texture_side)).then_some(self.max_texture_side);
         self.reported_texture_side = Some(self.max_texture_side);
+        raw.safe_area_insets = self.safe_area.take();
         self.app.raw_input_hook(&mut raw);
         let app = &mut self.app;
         let mut cursor = egui::CursorIcon::Default;

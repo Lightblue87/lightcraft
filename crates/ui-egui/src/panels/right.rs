@@ -50,6 +50,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 RightPanel::Activity => activity(app, ui, id),
                 RightPanel::None => {}
             }
+            super::compact::keep_focus_visible(ui);
         });
     });
     if let Some(w) = resized {

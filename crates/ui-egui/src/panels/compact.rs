@@ -36,10 +36,15 @@ pub fn is_compact(ctx: &egui::Context) -> bool {
     ctx.data(|d| d.get_temp::<bool>(flag_id())).unwrap_or(false)
 }
 
-/// Decide the layout for this frame from the content width. Entering the compact layout closes
-/// My Photos, which would otherwise cover the photo as a full-width drawer.
-pub(crate) fn update(app: &mut LightcraftApp, ctx: &egui::Context, content_width: f32) {
-    let compact = content_width < COMPACT_WIDTH;
+/// Decide the layout for this frame from the content area (inside the safe area). Entering the
+/// compact layout closes My Photos, which would otherwise cover the photo as a full-width
+/// drawer. A content area that got shorter (iOS: the soft keyboard came up) starts a few frames
+/// of [`keep_focus_visible`].
+pub(crate) fn update(app: &mut LightcraftApp, ctx: &egui::Context, content: Rect) {
+    let (bottom, frames) = ctx.data(|d| d.get_temp::<(f32, u8)>(shrink_id())).unwrap_or((content.bottom(), 0));
+    let frames = if content.bottom() < bottom - 0.5 { 4 } else { frames.saturating_sub(1) };
+    ctx.data_mut(|d| d.insert_temp(shrink_id(), (content.bottom(), frames)));
+    let compact = content.width() < COMPACT_WIDTH;
     if compact && !is_compact(ctx) {
         app.ui.left_panel = false;
     }
@@ -269,6 +274,28 @@ fn tools(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(r));
     if icon_button(&mut child, "sheetClose", Icon::ChevronDown, BUTTON, false, true, "Hide").clicked() {
         close_sheet(app);
+    }
+}
+
+fn shrink_id() -> egui::Id {
+    egui::Id::new("content-shrink")
+}
+
+/// Call at the end of a scroll area's contents: for a few frames after the content area got
+/// shorter, the focused widget (a text field, typically, whose keyboard just came up) is scrolled
+/// back into view if it's in this scroll area and now hidden below the content area.
+pub fn keep_focus_visible(ui: &egui::Ui) {
+    let ctx = ui.ctx();
+    // not on the frame the area shrank: the focused widget's rectangle (from the previous frame)
+    // is still where it was laid out before
+    if ctx.data(|d| d.get_temp::<(f32, u8)>(shrink_id())).is_none_or(|(_, frames)| frames == 0 || frames == 4) {
+        return;
+    }
+    let Some(focused) = ctx.memory(|m| m.focused()).and_then(|id| ctx.read_response(id)) else { return };
+    let visible = ui.clip_rect().intersect(ctx.content_rect());
+    if ui.min_rect().contains_rect(focused.rect) && !visible.contains_rect(focused.rect) {
+        // at once: the layout is still settling, and an animation would restart every frame
+        ui.scroll_to_rect_animation(focused.rect, Some(egui::Align::Center), egui::style::ScrollAnimation::none());
     }
 }
 

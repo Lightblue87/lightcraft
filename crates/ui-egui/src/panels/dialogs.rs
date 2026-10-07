@@ -1021,6 +1021,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
             if import {
                 crate::import::note_dialog_bottom(ui);
             }
+            // compact layout: a text field the soft keyboard just covered scrolls back into view
+            crate::panels::compact::keep_focus_visible(ui);
         });
     if let Some(w) = shown {
         ctx.move_to_top(w.response.layer_id);

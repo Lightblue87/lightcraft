@@ -234,3 +234,61 @@ fn mouse_click_on_a_slider_still_sets_the_value_there() {
     }
     assert!(exposure(&h) < before - 1.0, "set near the minimum: {before} → {}", exposure(&h));
 }
+
+/// The soft keyboard, as a phone shell reports it: 330 pt of the screen's bottom.
+const KEYBOARD: f32 = 330.0;
+
+fn keyboard_up(h: &mut Headless) {
+    h.set_safe_area(egui::SafeAreaInsets(egui::epaint::MarginF32 { bottom: KEYBOARD, ..Default::default() }));
+    for _ in 0..8 {
+        h.step();
+    }
+}
+
+fn focus(h: &mut Headless, field: &str) {
+    let r = h.request("ui.clickWidget", json!({"id": field}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.step();
+    h.step();
+    assert!(h.view.ctx.memory(|m| m.focused()).is_some(), "{field} has focus");
+}
+
+#[test]
+fn keyboard_lifts_the_layout_and_keeps_a_sheet_field_in_view() {
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "info"}));
+    let sheet = widget(&h, "panel:sheet").expect("the Info sheet");
+    // the lowest text field visible in the sheet, which a 330 pt keyboard would cover
+    let (field, rect) = h
+        .app
+        .widgets
+        .iter()
+        .filter(|(id, r)| id.starts_with("field:") && sheet.contains_rect(*r))
+        .max_by(|a, b| a.1.bottom().total_cmp(&b.1.bottom()))
+        .map(|(id, r)| (id.clone(), *r))
+        .expect("a text field in the Info panel");
+    assert!(rect.bottom() > PHONE[1] - KEYBOARD, "{field} starts where the keyboard goes: {rect:?}");
+    focus(&mut h, &field);
+    keyboard_up(&mut h);
+    let content = h.view.ctx.content_rect();
+    assert_eq!(content.bottom(), PHONE[1] - KEYBOARD, "the content area ends at the keyboard");
+    let bar = widget(&h, "icon:photoGrid").expect("the bottom bar");
+    assert!(bar.bottom() <= content.bottom(), "the bottom bar sits on the keyboard: {bar:?}");
+    let now = widget(&h, &field).expect("the field");
+    assert!(
+        now.bottom() <= content.bottom() && now.top() >= h.app.canvas_rect.map_or(0.0, |c| c.bottom()),
+        "{field} in view above the keyboard: {now:?}"
+    );
+}
+
+#[test]
+fn keyboard_keeps_a_dialog_field_in_view() {
+    let mut h = demo(PHONE, json!({"view": "detail"}));
+    open(&mut h, "dialog.rename");
+    focus(&mut h, "field:renameTemplate");
+    keyboard_up(&mut h);
+    let content = h.view.ctx.content_rect();
+    let dialog = dialog_rect(&h).expect("the Rename dialog");
+    assert!(dialog.bottom() <= content.bottom() && dialog.top() >= 0.0, "the dialog sits above the keyboard: {dialog:?}");
+    let field = widget(&h, "field:renameTemplate").expect("the template field");
+    assert!(field.bottom() <= content.bottom(), "the field is in view: {field:?}");
+}

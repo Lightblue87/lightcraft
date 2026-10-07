@@ -45,15 +45,18 @@ browsers:
 - **Sliders by touch:** a drag that starts sideways adjusts the slider by the distance moved;
   one that starts up or down scrolls the panel, even when it begins on a slider's track. A tap
   doesn't change the value, and double-tap resets. Mouse and trackpad work as on the desktop.
+- **Soft keyboard (iOS):** the layout moves up above the keyboard (bottom bar, sheet, dialogs),
+  and a focused text field it would cover is scrolled into view. The shell's scene delegate
+  reads the keyboard frame from UIKit and adds it to egui's bottom safe-area inset.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
   when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
   preview stacks above its options, and the Shortcuts table scrolls sideways.
 
 The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home indicator).
 
-| | Edit sheet | Grid | My Photos | Export dialog |
-|---|---|---|---|---|
-| iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) | ![export](docs/screens/phone-export.jpg) |
+| | Edit sheet | Grid | My Photos | Export dialog | Typing a caption |
+|---|---|---|---|---|---|
+| iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) | ![export](docs/screens/phone-export.jpg) | ![keyboard](docs/screens/phone-keyboard.jpg) |
 
 ## Known problems
 
@@ -62,8 +65,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
-  dialogs (see below). There's no landscape-specific arrangement, and the soft keyboard can
-  cover a dialog's text field.
+  dialogs (see below). There's no landscape-specific arrangement.
+- **Soft keyboard.** On Android the keyboard isn't tracked yet, so it can cover fields there.
+  On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
 - **Touch.** There's no pinch zoom, some controls appear only on hover, and the desktop
   layout's hit targets are small. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.

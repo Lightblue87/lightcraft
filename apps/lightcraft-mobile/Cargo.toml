@@ -32,11 +32,11 @@ log = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
 egui = { workspace = true }
 
-# UIScene adoption (src/ios_scene.rs): the objc2 generation wgpu already uses, not winit 0.30's
+# UIScene adoption and keyboard tracking (src/ios_scene.rs): the objc2 generation wgpu already uses, not winit 0.30's
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject"] }
-objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "UIResponder", "UIScene", "UISceneOptions", "UISceneSession", "UIView", "UIWindow", "UIWindowScene"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSNotification", "NSValue", "NSDictionary", "NSString"] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "UIGeometry", "UIResponder", "UIScene", "UISceneOptions", "UISceneSession", "UIView", "UIWindow", "UIWindowScene"] }
 raw-window-handle = "0.6"
 
 [target.'cfg(target_os = "android")'.dependencies]

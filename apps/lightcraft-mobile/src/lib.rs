@@ -14,17 +14,56 @@ mod ios_scene;
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
 
-struct App(LightcraftApp, bool);
+struct App {
+    app: LightcraftApp,
+    /// The touch screen has been announced to egui (see `raw_input_hook`).
+    touch_announced: bool,
+    /// The safe area as egui-winit last reported it, before the keyboard is added.
+    #[cfg(target_os = "ios")]
+    insets: egui::SafeAreaInsets,
+    /// The keyboard height last folded into the safe area.
+    #[cfg(target_os = "ios")]
+    keyboard: f32,
+}
+
+impl App {
+    fn new(app: LightcraftApp) -> Self {
+        App {
+            app,
+            touch_announced: false,
+            #[cfg(target_os = "ios")]
+            insets: egui::SafeAreaInsets::default(),
+            #[cfg(target_os = "ios")]
+            keyboard: 0.0,
+        }
+    }
+
+    /// iOS: the soft keyboard joins the bottom of the safe area, so the layout (bottom bar, edit
+    /// sheet, dialogs) sits above it rather than under it.
+    #[cfg(target_os = "ios")]
+    fn keyboard_inset(&mut self, raw: &mut egui::RawInput) {
+        if let Some(insets) = raw.safe_area_insets {
+            self.insets = insets;
+        }
+        let keyboard = ios_scene::keyboard_height();
+        if raw.safe_area_insets.is_some() || keyboard != self.keyboard {
+            self.keyboard = keyboard;
+            let mut insets = self.insets;
+            insets.0.bottom = insets.0.bottom.max(keyboard);
+            raw.safe_area_insets = Some(insets);
+        }
+    }
+}
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.0.logic(ctx);
+        self.app.logic(ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         // egui turns on touch drag-to-scroll once it has seen a touch, but hit-tests against the
         // previous frame, so the first swipe after launch would never scroll: announce the touch
         // screen up front with a cancelled touch
-        if !std::mem::replace(&mut self.1, true) {
+        if !std::mem::replace(&mut self.touch_announced, true) {
             raw.events.push(egui::Event::Touch {
                 device_id: egui::TouchDeviceId(0),
                 id: egui::TouchId(0),
@@ -33,13 +72,15 @@ impl eframe::App for App {
                 force: None,
             });
         }
-        self.0.raw_input_hook(raw);
+        #[cfg(target_os = "ios")]
+        self.keyboard_inset(raw);
+        self.app.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.0.ui(ui);
+        self.app.ui(ui);
     }
     fn on_exit(&mut self) {
-        if let Err(e) = self.0.session.close_library() {
+        if let Err(e) = self.app.session.close_library() {
             log::error!("saving the library failed: {e}");
         }
     }
@@ -101,6 +142,8 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             if let Ok(h) = raw_window_handle::HasWindowHandle::window_handle(_cc) {
                 ios_scene::set_window(h.as_raw());
             }
+            #[cfg(target_os = "ios")]
+            ios_scene::set_context(&_cc.egui_ctx);
             let mut s = Session::new().with_fs().with_system_clock();
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {
@@ -110,7 +153,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 }
                 Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
             }
-            Ok(Box::new(App(LightcraftApp::new(s, services()), false)))
+            Ok(Box::new(App::new(LightcraftApp::new(s, services()))))
         }),
     )
 }
