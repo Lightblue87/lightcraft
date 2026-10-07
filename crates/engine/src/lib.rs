@@ -894,6 +894,8 @@ mod tests_library;
 #[cfg(test)]
 mod tests_merge;
 #[cfg(test)]
+mod tests_moved_library;
+#[cfg(test)]
 mod tests_organize;
 #[cfg(test)]
 mod tests_persist;

@@ -58,6 +58,11 @@ browsers:
   subclass of NativeActivity (`android/java/…/LightCraftActivity.java`), compiled by
   `scripts/android-apk.sh` with `javac` and `d8`, because NativeActivity can't receive an
   activity result.
+- **Surviving a reinstall (iOS):** iOS gives a reinstalled or updated app a new container
+  path, but the catalog stores absolute paths. When the library opens, the engine relinks
+  photos that were inside the library at its old location (such as `Picked/` copies) to the
+  same place in the library now. This is general, so it also covers a moved library folder on
+  the desktop (`lightcraft_engine::cmd::missing::plan_moved_library`).
 - **Export and share:** exports go to a folder next to the library (`Documents/LightCraft
   Exports` on iOS, so they show in the Files app; the app's private files on Android). When an
   export from the Export dialog finishes, the share sheet opens with the files: AirDrop, Save
@@ -104,10 +109,6 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
 - **No mobile memory budget yet.** The engine still budgets memory like a desktop.
-- **Imported photos break when the app is reinstalled (iOS).** The catalog stores absolute
-  paths, and iOS gives a reinstalled or updated app a new container path, so photos imported
-  into `Picked/` show as missing afterwards. The library itself and the demo photos are
-  unaffected. Not fixed yet.
 - **Import caveats.** Picked photos are copied into `<library>/Picked`, so they take up space
   twice. On Android the picker hides original file names, so photos arrive named after their
   media IDs, and HEIC/HEIF is converted to JPEG on the Java side (losing EXIF). Raw files from
