@@ -117,6 +117,11 @@ pub fn set_context(ctx: &egui::Context) {
     CONTEXT.with_borrow_mut(|c| *c = Some(ctx.clone()));
 }
 
+/// The window's root view controller (winit's), to present system UI from.
+pub fn root_view_controller() -> Option<Retained<objc2_ui_kit::UIViewController>> {
+    WINDOW.with_borrow(|w| w.as_ref().and_then(|w| w.rootViewController()))
+}
+
 /// Hands over the window winit created (from the view in eframe's window handle).
 pub fn set_window(handle: raw_window_handle::RawWindowHandle) {
     let raw_window_handle::RawWindowHandle::UiKit(h) = handle else { return };

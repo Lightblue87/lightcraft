@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build the Android cdylib, package a NativeActivity APK (no Gradle: aapt2 + zipalign + apksigner,
+# Build the Android cdylib and the small Java activity, package an APK (no Gradle: javac + d8 +
+# aapt2 + zipalign + apksigner,
 # signed with a throwaway debug key) and, with --run, install and start it on the adb device.
 # Needs ANDROID_HOME (default ~/Library/Android/sdk), an NDK and `rustup target add aarch64-linux-android`.
 set -eu
@@ -19,8 +20,14 @@ OUT=${CARGO_TARGET_DIR:-target}/aarch64-linux-android/release
 WORK=$OUT/apk
 rm -rf "$WORK" && mkdir -p "$WORK/stage/lib/arm64-v8a"
 cp "$OUT/liblightcraft_mobile.so" "$WORK/stage/lib/arm64-v8a/"
+# the Java side (android/java: NativeActivity plus the photo picker) → classes.dex
+mkdir -p "$WORK/classes" "$WORK/dex"
+javac -source 8 -target 8 -Xlint:-options -bootclasspath "$PLATFORM/android.jar" -d "$WORK/classes" \
+    $(find apps/lightcraft-mobile/android/java -name '*.java')
+"$BT/d8" --release --min-api $API --lib "$PLATFORM/android.jar" --output "$WORK/dex" $(find "$WORK/classes" -name '*.class')
+cp "$WORK/dex/classes.dex" "$WORK/stage/"
 "$BT/aapt2" link -o "$WORK/base.apk" --manifest apps/lightcraft-mobile/android/AndroidManifest.xml -I "$PLATFORM/android.jar"
-(cd "$WORK/stage" && zip -q -0 -r ../base.apk lib)
+(cd "$WORK/stage" && zip -q -0 -r ../base.apk lib classes.dex)
 "$BT/zipalign" -f -p 4 "$WORK/base.apk" "$WORK/aligned.apk"
 KS=$OUT/lightcraft-debug.keystore
 [ -f "$KS" ] || keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias debug \
@@ -30,5 +37,5 @@ echo "$OUT/lightcraft-mobile.apk"
 if [ "${1:-}" = --run ]; then
     ADB="$SDK/platform-tools/adb"
     "$ADB" install -r "$OUT/lightcraft-mobile.apk"
-    "$ADB" shell am start -S -n ai.storyteller.lightcraft.mobile/android.app.NativeActivity
+    "$ADB" shell am start -S -n ai.storyteller.lightcraft.mobile/.LightCraftActivity
 fi

@@ -50,11 +50,19 @@ browsers:
 - **Sliders by touch:** a drag that starts sideways adjusts the slider by the distance moved;
   one that starts up or down scrolls the panel, even when it begins on a slider's track. A tap
   doesn't change the value, and double-tap resets. Mouse and trackpad work as on the desktop.
+- **Import from the photo library:** File ▸ Import Photos… opens the system picker (PHPicker
+  on iOS, Android's photo picker). The chosen photos are copied into `<library>/Picked`, then
+  the usual Import review opens. On iOS each photo is fetched as its raw file when it has one,
+  as JPEG/PNG/TIFF/WebP when it already is one, and otherwise as JPEG. LightCraft has no HEIC
+  decoder yet, so iOS converts HEIC photos (`src/ios_picker.rs`). Android uses a small Java
+  subclass of NativeActivity (`android/java/…/LightCraftActivity.java`), compiled by
+  `scripts/android-apk.sh` with `javac` and `d8`, because NativeActivity can't receive an
+  activity result.
 - **Soft keyboard:** the layout moves up above the keyboard (bottom bar, sheet, dialogs), and a
   focused text field it would cover is scrolled into view. On iOS the shell's scene delegate
   reads the keyboard frame from UIKit. On Android the shell compares the decor view's
   `getWindowVisibleDisplayFrame` with the window's bounds over JNI
-  (`src/android_insets.rs`), which also keeps the UI clear of the navigation bar. Either way
+  (`src/android_jni.rs`), which also keeps the UI clear of the navigation bar. Either way
   the result becomes egui's safe-area insets.
 - **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
   when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
@@ -65,6 +73,10 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
 | | Edit sheet | Grid | My Photos | Export dialog | Typing a caption |
 |---|---|---|---|---|---|
 | iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) | ![export](docs/screens/phone-export.jpg) | ![keyboard](docs/screens/phone-keyboard.jpg) |
+
+| Photo picker (iOS) | Import review (iOS) | Import review (Android) |
+|---|---|---|
+| ![picker](docs/screens/phone-picker.jpg) | ![import](docs/screens/phone-import.jpg) | ![android import](docs/screens/android-import.jpg) |
 
 ## Known problems
 
@@ -83,8 +95,13 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
-- **No pickers, sharing or memory budget yet.** All `Services` except export writing are
-  `None`, so nothing can be imported beyond the demo photos.
+- **No sharing or memory budget yet.** Exports are written inside the app's sandbox, with no
+  share sheet, and the engine still budgets memory like a desktop.
+- **Import caveats.** Picked photos are copied into `<library>/Picked`, so they take up space
+  twice. On Android the picker hides original file names, so photos arrive named after their
+  media IDs, and HEIC/HEIF is converted to JPEG on the Java side (losing EXIF). Raw files from
+  the photo library haven't been tried on either platform, because there was no raw sample to
+  add to the simulators.
 - **Android.** The window uses GL, because the emulator's Vulkan surface fails to configure;
   `adb shell touch /data/local/tmp/lc_vulkan` tries Vulkan. Logs go to stderr, which Android
   discards.

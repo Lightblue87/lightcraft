@@ -9,7 +9,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_os = "android")]
-mod android_insets;
+mod android_jni;
+#[cfg(target_os = "ios")]
+mod ios_picker;
 #[cfg(target_os = "ios")]
 mod ios_scene;
 
@@ -63,7 +65,7 @@ impl App {
     }
 
     /// Android: egui-winit reports no safe area here, so the shell does: the window edges that
-    /// system bars, the display cutout and the soft keyboard cover (see `android_insets`). With
+    /// system bars, the display cutout and the soft keyboard cover (see `android_jni`). With
     /// the keyboard in the bottom inset, the layout (bottom bar, edit sheet, dialogs) sits above
     /// it. Polled a few times a second, more often while a text field has focus, since nothing
     /// signals a change.
@@ -79,7 +81,7 @@ impl App {
         }
         self.insets_polled = now;
         let Some(android) = ANDROID_APP.get() else { return };
-        let Some(px) = android_insets::window_insets(android) else { return };
+        let Some(px) = android_jni::window_insets(android) else { return };
         let ppp = raw.viewports.get(&raw.viewport_id).and_then(|v| v.native_pixels_per_point).unwrap_or(1.0);
         let [left, top, right, bottom] = px.map(|p| p as f32 / ppp);
         let insets = egui::SafeAreaInsets(egui::epaint::MarginF32 { left, top, right, bottom });
@@ -90,12 +92,38 @@ impl App {
     }
 }
 
-/// The activity, for its window insets (set once by `android_main`).
+/// A photo pick is under way (Android: its result is polled, see `App::logic`).
+#[cfg(target_os = "android")]
+static PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The activity, for its window insets and the photo picker (set once by `android_main`).
 #[cfg(target_os = "android")]
 static ANDROID_APP: std::sync::OnceLock<winit::platform::android::activity::AndroidApp> = std::sync::OnceLock::new();
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // photos picked (asynchronously) and copied in: the usual Import review
+        // while a pick is under way, look for its photos a few times a second (they're copied in
+        // the background; nothing else wakes the app when they're in)
+        #[cfg(target_os = "android")]
+        let picked: Vec<Vec<String>> = if PICKING.load(std::sync::atomic::Ordering::Relaxed) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            let got = ANDROID_APP.get().and_then(android_jni::take_picked);
+            if got.is_some() {
+                PICKING.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+            got.into_iter().filter(|p| !p.is_empty()).collect()
+        } else {
+            Vec::new()
+        };
+        #[cfg(target_os = "ios")]
+        let picked = ios_picker::take_ready();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        for paths in picked {
+            if let Err(e) = self.app.run("file.addPhotos", serde_json::json!({ "paths": paths })) {
+                log::warn!("import: {e}");
+            }
+        }
         self.app.logic(ctx);
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -134,6 +162,21 @@ fn services() -> Services {
         write: Some(Box::new(lightcraft_engine::export::write_file)),
         png: Some(Box::new(|img: &lightcraft_raster::Rgba8| {
             lightcraft_codecs::encode_png(&lightcraft_codecs::EncodeImage::rgba8(img), &lightcraft_codecs::EncodeMeta::default()).unwrap_or_default()
+        })),
+        // File ▸ Add Photos… shows the system picker; the photos arrive later (see `App::logic`)
+        #[cfg(target_os = "ios")]
+        pick_files: Some(Box::new(|| {
+            ios_picker::present();
+            Vec::new()
+        })),
+        #[cfg(target_os = "android")]
+        pick_files: Some(Box::new(|| {
+            if let Some(app) = ANDROID_APP.get() {
+                let dir = app.internal_data_path().unwrap_or_default().join("LightCraft Library").join("Picked");
+                PICKING.store(true, std::sync::atomic::Ordering::Relaxed);
+                android_jni::pick_photos(app, &dir.to_string_lossy());
+            }
+            Vec::new()
         })),
         ..Default::default()
     }
@@ -184,7 +227,10 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 ios_scene::set_window(h.as_raw());
             }
             #[cfg(target_os = "ios")]
-            ios_scene::set_context(&_cc.egui_ctx);
+            {
+                ios_scene::set_context(&_cc.egui_ctx);
+                ios_picker::init(library_dir.join("Picked"), _cc.egui_ctx.clone());
+            }
             let mut s = Session::new().with_fs().with_system_clock();
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {

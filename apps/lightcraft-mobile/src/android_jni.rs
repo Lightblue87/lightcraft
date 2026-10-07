@@ -1,4 +1,5 @@
-//! Android: how much of each window edge the system bars, display cutout and soft keyboard cover.
+//! Android, over JNI: the photo picker (`android/java/…/LightCraftActivity.java`), and how much
+//! of each window edge the system bars, display cutout and soft keyboard cover.
 //!
 //! winit 0.30 drops the activity's content-rect changes, and apps targeting Android 15 are drawn
 //! edge to edge, so the window isn't resized for the keyboard either. The decor view's
@@ -8,7 +9,7 @@
 //! the keyboard.
 #![allow(unsafe_code)] // the JavaVM and activity pointers android-activity hands out
 
-use jni::objects::JObject;
+use jni::objects::{JObject, JObjectArray, JString};
 use jni::{JValue, JavaVM, jni_sig, jni_str};
 use winit::platform::android::activity::AndroidApp;
 
@@ -42,4 +43,48 @@ pub fn window_insets(app: &AndroidApp) -> Option<[i32; 4]> {
             None
         }
     }
+}
+
+fn with_activity<T>(app: &AndroidApp, f: impl FnOnce(&mut jni::Env, &JObject) -> jni::errors::Result<T>) -> jni::errors::Result<T> {
+    // SAFETY: as in `window_insets`
+    let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) };
+    vm.attach_current_thread(|env| {
+        // SAFETY: as in `window_insets`
+        let activity = unsafe { JObject::from_raw(env, app.activity_as_ptr().cast()) };
+        f(env, &activity)
+    })
+}
+
+/// Show the system photo picker; the chosen photos are copied into `dir`.
+pub fn pick_photos(app: &AndroidApp, dir: &str) {
+    let r = with_activity(app, |env, activity| {
+        let dir = env.new_string(dir)?;
+        env.call_method(activity, jni_str!("pickPhotos"), jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&dir)])?;
+        Ok(())
+    });
+    if let Err(e) = r {
+        log::warn!("photo picker: {e}");
+    }
+}
+
+/// The paths of one picked selection that has been copied in, if any.
+pub fn take_picked(app: &AndroidApp) -> Option<Vec<String>> {
+    let r = with_activity(app, |env, activity| {
+        let paths = env.call_method(activity, jni_str!("takePicked"), jni_sig!("()[Ljava/lang/String;"), &[])?.l()?;
+        if paths.is_null() {
+            return Ok(None);
+        }
+        // SAFETY: takePicked returns a String[]
+        let paths = unsafe { JObjectArray::<JString>::from_raw(env, paths.into_raw()) };
+        let mut out = Vec::new();
+        for i in 0..paths.len(env)? {
+            let s = paths.get_element(env, i)?;
+            out.push(s.try_to_string(env)?);
+        }
+        Ok(Some(out))
+    });
+    r.unwrap_or_else(|e| {
+        log::warn!("photo picker: {e}");
+        None
+    })
 }
