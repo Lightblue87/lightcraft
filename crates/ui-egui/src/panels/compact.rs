@@ -271,3 +271,43 @@ fn tools(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         close_sheet(app);
     }
 }
+
+/// Space kept between a compact-layout dialog and the safe area's edges.
+const DIALOG_INSET: f32 = 8.0;
+
+/// A dialog's content width: `desktop`, or in the compact layout what fits across the screen
+/// inside a frame with `margin_x` of inner margin on each side.
+pub fn dialog_width(ctx: &egui::Context, desktop: f32, margin_x: f32) -> f32 {
+    if !is_compact(ctx) {
+        return desktop;
+    }
+    desktop.min((ctx.content_rect().width() - 2.0 * (DIALOG_INSET + margin_x)).max(120.0))
+}
+
+/// In the compact layout a dialog window spans the screen (inside the safe area) at a fixed width
+/// and scrolls when it is taller than the screen; elsewhere `win` is returned unchanged.
+pub fn dialog<'a>(ctx: &egui::Context, win: egui::Window<'a>) -> egui::Window<'a> {
+    if !is_compact(ctx) {
+        return win;
+    }
+    let area = ctx.content_rect().shrink(DIALOG_INSET);
+    // egui's window sizes are its outer size (frame margins included)
+    let w = area.width();
+    // auto-sized: as tall as its contents up to the screen, then it scrolls
+    win.auto_sized().min_width(w).max_width(w).max_height(area.height()).vscroll(true).constrain_to(area)
+}
+
+/// A labelled row for dialogs: in the compact layout the label sits above its controls, which
+/// wrap; elsewhere `add` comes back for the caller's usual fixed label column.
+pub fn stacked_row<R, F: FnOnce(&mut egui::Ui) -> R>(ui: &mut egui::Ui, label: egui::RichText, add: F) -> Result<R, F> {
+    if !is_compact(ui.ctx()) {
+        return Err(add);
+    }
+    Ok(ui
+        .vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.label(label);
+            ui.horizontal_wrapped(add).inner
+        })
+        .inner)
+}

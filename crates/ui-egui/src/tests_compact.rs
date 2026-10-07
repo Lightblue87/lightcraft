@@ -90,3 +90,55 @@ fn desktop_width_keeps_the_side_panels() {
     assert!(right.width() < 600.0 && right.right() > 1300.0, "a column at the right: {right:?}");
     assert!(widget(&h, "icon:discord").is_some(), "the desktop top bar");
 }
+
+/// The dialog window's rectangle (`panels::dialogs` gives every dialog this id).
+fn dialog_rect(h: &Headless) -> Option<egui::Rect> {
+    h.view.ctx.memory(|m| m.area_rect(egui::Id::new("lightcraft-dialog")))
+}
+
+fn open(h: &mut Headless, command: &str) {
+    let r = h.request("engine.execute", json!({"command": command, "params": {}}), T);
+    assert_eq!(r["ok"], true, "{command}: {r}");
+    for _ in 0..4 {
+        h.step();
+    }
+}
+
+#[test]
+fn phone_width_dialogs_fit_the_screen() {
+    let mut h = demo(PHONE, json!({"view": "detail"}));
+    let r = h.request("engine.execute", json!({"command": "library.selectAll", "params": {}}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    // the wide ones on the desktop: Settings (560 pt), Export (label column + button rows),
+    // Shortcuts (a three-column table), Merge (a 520 pt preview beside its options), and two
+    // ordinary ones
+    for command in ["app.settings", "dialog.export", "app.shortcuts", "dialog.mergeHdr", "dialog.labelNames", "dialog.copySettings"] {
+        open(&mut h, command);
+        assert!(h.app.ui.dialog.is_some(), "{command} opened a dialog");
+        let r = dialog_rect(&h).unwrap_or_else(|| panic!("{command}: no dialog window"));
+        assert!(r.left() >= 0.0 && r.right() <= PHONE[0], "{command} fits across: {r:?}");
+        assert!(r.top() >= 0.0 && r.bottom() <= PHONE[1], "{command} fits down: {r:?}");
+        assert!(r.width() > PHONE[0] - 40.0, "{command} uses the width: {r:?}");
+        h.request("ui.dialog.cancel", json!({}), T);
+        h.step();
+    }
+    h.app.ui.dialog = Some(crate::state::Dialog::ConfirmDelete { count: 1 });
+    for _ in 0..4 {
+        h.step();
+    }
+    let r = dialog_rect(&h).expect("the delete confirmation");
+    assert!(r.left() >= 0.0 && r.right() <= PHONE[0], "{r:?}");
+}
+
+#[test]
+fn desktop_width_dialogs_keep_their_size() {
+    let mut h = demo([1400.0, 900.0], json!({"view": "detail"}));
+    open(&mut h, "app.settings");
+    let r = dialog_rect(&h).expect("Settings");
+    assert!(r.width() >= 560.0 && r.width() < 900.0, "Settings at its desktop width: {r:?}");
+    h.request("ui.dialog.cancel", json!({}), T);
+    h.step();
+    open(&mut h, "dialog.labelNames");
+    let r = dialog_rect(&h).expect("label names");
+    assert!(r.width() < 600.0, "an ordinary dialog stays compact on the desktop: {r:?}");
+}

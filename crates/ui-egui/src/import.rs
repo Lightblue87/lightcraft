@@ -1390,6 +1390,10 @@ fn inspect_sources(sources: &[String]) -> SourceSummary {
 /// A labelled row (fixed label column).
 fn field<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let t = Tokens::get(ui.ctx());
+    let add = match crate::panels::compact::stacked_row(ui, egui::RichText::new(label).color(t.text_label), add) {
+        Ok(r) => return r,
+        Err(add) => add,
+    };
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(vec2(78.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_min_width(78.0);

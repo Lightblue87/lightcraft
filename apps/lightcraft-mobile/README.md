@@ -42,12 +42,15 @@ browsers:
 - **My Photos:** a full-width drawer that closes when you pick a source.
 - **Grid:** about three thumbnails across.
 - **Bottom bar:** view modes, Sort, Filmstrip and an Edit toggle.
+- **Dialogs:** Export, Import, Settings, Merge and the rest span the screen width and scroll
+  when they're taller than it. Labels sit above their controls, and button rows wrap. The Merge
+  preview stacks above its options, and the Shortcuts table scrolls sideways.
 
 The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home indicator).
 
-| | Edit sheet | Grid | My Photos |
-|---|---|---|---|
-| iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) |
+| | Edit sheet | Grid | My Photos | Export dialog |
+|---|---|---|---|---|
+| iPhone 17 (iOS 27) | ![sheet](docs/screens/phone-edit.jpg) | ![grid](docs/screens/phone-grid.jpg) | ![drawer](docs/screens/phone-drawer.jpg) | ![export](docs/screens/phone-export.jpg) |
 
 ## Known problems
 
@@ -55,9 +58,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
-- **Phone layout is a first pass.** Narrow windows get a compact layout (see below), but
-  dialogs (Import, Export, Settings) are still desktop-sized, and there's no landscape-specific
-  arrangement.
+- **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
+  dialogs (see below). There's no landscape-specific arrangement, and the soft keyboard can
+  cover a dialog's text field.
 - **Touch.** A swipe that starts on a slider's track moves the slider, not the sheet. There's
   no pinch zoom, some controls appear only on hover, and the desktop layout's hit targets are
   small.

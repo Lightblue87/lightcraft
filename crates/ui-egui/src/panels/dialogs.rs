@@ -128,7 +128,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
     // rather than growing the window when the options below the grid get taller (e.g. Copy).
     let import = matches!(dlg, Dialog::Import { .. });
     let window_id = egui::Id::new(if import { "lightcraft-import-dialog" } else { "lightcraft-dialog" });
-    let shown = egui::Window::new(crate::i18n::tr(&title)).id(window_id)
+    let window = egui::Window::new(crate::i18n::tr(&title)).id(window_id)
         .collapsible(false)
         .resizable(import)
         .vscroll(import)
@@ -141,7 +141,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
             Dialog::AllMetadata { .. } => 620.0,
             Dialog::FaceModel { .. } => 460.0,
             _ => 380.0,
-        })
+        });
+    let shown = crate::panels::compact::dialog(ctx, window)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 8.0;
             match &mut dlg {
@@ -1526,6 +1527,10 @@ fn num(ui: &mut egui::Ui, spec: &ControlSpec, v: &mut f64) -> bool {
 /// A labelled row (fixed label column).
 fn field<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let t = Tokens::get(ui.ctx());
+    let add = match crate::panels::compact::stacked_row(ui, egui::RichText::new(crate::i18n::tr(label)).color(t.text_label), add) {
+        Ok(r) => return r,
+        Err(add) => add,
+    };
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(egui::vec2(LABEL_W, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_min_width(LABEL_W);

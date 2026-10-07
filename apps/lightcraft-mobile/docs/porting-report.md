@@ -118,7 +118,7 @@ The engine is already portable. The cost is almost entirely **UX** (touch and ph
 | Storage: opaque source ids, copy-in import, sidecars/move/devices off, caches → Caches/ | 1–2 | — |
 | Lifecycle and memory: suspend hooks, budgets, memory warnings, GL fallback | 2–3 | — |
 | Touch pass: drag vs scroll, pinch/pan, long-press, 44 pt targets, hover replacements, keyboard/IME | 6–10 | — |
-| Phone layout: single column, bottom-sheet panels, tab bar, modal tools, full-screen dialogs (first pass done: compact layout, sheet, drawer, safe area) | — | 10–16 |
+| Phone layout: single column, bottom-sheet panels, tab bar, modal tools, full-screen dialogs (first pass done: compact layout, sheet, drawer, safe area, dialogs) | — | 10–16 |
 | GPU tiling for exports on 128–256 MB devices | 2–3 | — |
 | CI (`cargo check` for both targets), device-farm QA | 1–2 | 1–2 |
 | **Total** | **18–29 wk (≈4–7 months)** | **+11–18 wk** |
@@ -144,7 +144,7 @@ same desktop UI.
 2. The **winit/UIScene** blocker is solved in the shell; that leaves no hard blockers.
 3. Do the touch pass **upstream**, as a `LayoutMode::{Desktop, Tablet, Phone}` in `ui-egui`.
    That benefits the web build on tablets too.
-4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area and a three-across grid. Still to do: phone-sized dialogs, touch gestures (pinch, swipe between photos) and keeping slider drags from fighting scrolling.
+4. Phones have a first-pass compact layout: a bottom-sheet editor, a drawer, the safe area, a three-across grid and phone-sized dialogs. Still to do: touch gestures (pinch, swipe between photos), keeping slider drags from fighting scrolling, and keeping the soft keyboard off text fields.
 
 ## Spike artifacts
 

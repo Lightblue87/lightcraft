@@ -36,7 +36,7 @@ const LABEL_W: f32 = 150.0;
 /// The dialog body for `tab` (the tab bar switches `tab`).
 pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, tab: &mut String) {
     let t = Tokens::get(ui.ctx());
-    ui.set_min_width(560.0);
+    ui.set_min_width(super::compact::dialog_width(ui.ctx(), 560.0, 16.0));
     ui.set_min_height(330.0);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
@@ -65,6 +65,10 @@ pub(super) fn heading(ui: &mut egui::Ui, t: &Tokens, text: &str) {
 }
 
 fn row<R>(ui: &mut egui::Ui, t: &Tokens, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let add = match super::compact::stacked_row(ui, RichText::new(crate::i18n::tr(label)).color(t.text_label), add) {
+        Ok(r) => return r,
+        Err(add) => add,
+    };
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(egui::vec2(LABEL_W, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_min_width(LABEL_W);
