@@ -420,3 +420,39 @@ fn pencil_pressure_survives_frames_without_touch_events_and_a_zero_first_contact
     assert!(strokes[0].size < strokes[strokes.len() - 1].size, "the firm part is wider: {strokes:?}");
     h.settle(SETTLE);
 }
+
+#[test]
+fn a_menu_taller_than_the_screen_scrolls_to_its_last_item() {
+    let services = Services { png: None, ..Default::default() };
+    let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    // an 11" iPad in landscape: the View menu is taller than the room below the menu bar
+    let (w, hgt) = (1194.0, 834.0);
+    let mut h = Headless::new(app, [w, hgt], 1.0);
+    let r = h.request("ui.set", json!({"view": "detail"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let r = h.request("ui.clickWidget", json!({"id": "menu:View"}), T);
+    assert_eq!(r["ok"], true, "the in-window menu bar: {r}");
+    h.step();
+    let list = widget(&mut h, "menu-level:1");
+    assert!(list.bottom() <= hgt, "the menu stays on screen: {list:?}");
+    assert!(list.bottom() > hgt - 60.0, "and uses the room below the menu bar: {list:?}");
+    // scroll the list down to its last item
+    let last = "menuItem:view.filterBar";
+    for _ in 0..40 {
+        if widget(&mut h, last).bottom() <= list.bottom() {
+            break;
+        }
+        let r = h.request("ui.move", json!({"x": list.center().x, "y": list.center().y}), T);
+        assert_eq!(r["ok"], true, "{r}");
+        let r = h.request("ui.scroll", json!({"dx": 0.0, "dy": -80.0}), T);
+        assert_eq!(r["ok"], true, "{r}");
+        h.step();
+    }
+    let item = widget(&mut h, last);
+    assert!(item.top() >= list.top() && item.bottom() <= list.bottom() + 0.5, "the last item scrolled into view: {item:?} in {list:?}");
+    let before = h.app.ui.filter_bar;
+    let r = h.request("ui.clickWidget", json!({"id": last}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.step();
+    assert_ne!(h.app.ui.filter_bar, before, "and it works");
+}
