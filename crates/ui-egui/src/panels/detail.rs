@@ -53,6 +53,12 @@ pub enum Gesture {
         handle: u8,
         original_shape: MaskShape,
     },
+    /// Drawing a just-created linear / radial gradient (`mask`'s first component) from `a`.
+    DrawMask {
+        mask: u32,
+        a: Point,
+        original_shape: MaskShape,
+    },
     /// Guided Upright: a guide being drawn from `a` (normalized transformed coordinates).
     Guide {
         a: Point,
@@ -1536,6 +1542,21 @@ pub(crate) fn component_pin(shape: &MaskShape) -> Option<Point> {
 }
 
 /// `shape` moved by `dn` (normalized); `handle` 1/2 = a linear gradient's start/end set to `at`.
+/// `shape` (a linear or radial gradient) drawn by a drag from `a` to `b` (normalized): a linear
+/// gradient runs from `a` to `b`, a radial one is centred on `a` and reaches `b`.
+fn drawn_shape(shape: &MaskShape, a: Point, b: Point, map: &CanvasMap) -> MaskShape {
+    match shape.clone() {
+        MaskShape::Radial { feather, invert, .. } => {
+            let l = frame_long_norm(map);
+            let rx = ((b.x - a.x) / l.0).abs().max(0.01);
+            let ry = ((b.y - a.y) / l.1).abs().max(0.01);
+            MaskShape::Radial { center: a, rx, ry, angle: 0.0, feather, invert }
+        }
+        MaskShape::Linear { .. } if a.dist(b) > 1e-3 => MaskShape::Linear { start: a, end: b },
+        other => other,
+    }
+}
+
 fn moved_shape(shape: &MaskShape, handle: u8, dn: Point, at: Point, map: &CanvasMap, alt: bool) -> MaskShape {
     let mv = |p: Point| Point::new(p.x + dn.x, p.y + dn.y);
     match shape.clone() {
@@ -1782,7 +1803,20 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
     {
         let _ = app.run("mask.select", json!({"id": mid}));
     }
+    // a gradient just created from its tile: a drag away from the pins draws it
+    let drawing = app.ui.draw_mask.filter(|m| Some(*m) == active && matches!(app.ui.tool.as_str(), "linear" | "radial"));
+    if drawing.is_none() {
+        app.ui.draw_mask = None;
+    }
     if resp.drag_started()
+        && let Some(q) = crate::widgets::press_pos(ui, resp)
+        && hit(q).is_none()
+        && let Some(mask) = drawing
+        && let Some(original_shape) = d.masks.iter().find(|m| m.id == mask).and_then(|m| m.components.first()).map(|c| c.shape.clone())
+    {
+        let _ = app.run("develop.beginInteraction", json!({"label": "Draw Mask"}));
+        app.gesture = Some(Gesture::DrawMask { mask, a: map.norm(q), original_shape });
+    } else if resp.drag_started()
         && let Some(q) = ui.input(|i| i.pointer.press_origin()).or(resp.interact_pointer_pos())
     {
         let grip = hit(q).map(|(m, c, h, _)| (m, c, h)).or_else(|| {
@@ -1804,6 +1838,8 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             }
             let _ = app.run("develop.beginInteraction", json!({"label": "Edit Mask"}));
             app.gesture = Some(Gesture::MaskHandle { mask, comp, handle, original_shape });
+            // edited by its pins: drags don't redraw it any more
+            app.ui.draw_mask = None;
         }
     }
     if resp.dragged()
@@ -1817,7 +1853,16 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
         let new_shape = moved_shape(&original_shape, handle, dn, n, map, alt);
         let _ = app.run("mask.update", json!({"id": mask, "component": comp, "shape": new_shape}));
     }
-    if resp.drag_stopped() && matches!(app.gesture, Some(Gesture::MaskHandle { .. })) {
+    if resp.dragged()
+        && let (Some(Gesture::DrawMask { mask, a, original_shape }), Some(q)) = (app.gesture.clone(), resp.interact_pointer_pos())
+    {
+        let shape = drawn_shape(&original_shape, a, map.norm(q), map);
+        let _ = app.run("mask.update", json!({"id": mask, "component": 0, "shape": shape}));
+    }
+    if resp.drag_stopped() && matches!(app.gesture, Some(Gesture::MaskHandle { .. } | Gesture::DrawMask { .. })) {
+        if matches!(app.gesture, Some(Gesture::DrawMask { .. })) {
+            app.ui.draw_mask = None;
+        }
         app.gesture = None;
         let _ = app.run("develop.endInteraction", json!({}));
     }

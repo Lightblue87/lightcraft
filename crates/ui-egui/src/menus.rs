@@ -863,7 +863,11 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
                     app.ui.right = RightPanel::Masking;
                     app.ui.view = ViewMode::Detail;
                     app.ui.tool = tool.into();
-                    return Some(app.session.execute("mask.add", &json!({"kind": tool})).map_err(|e| e.to_string()));
+                    let r = app.session.execute("mask.add", &json!({"kind": tool})).map_err(|e| e.to_string());
+                    if r.is_ok() {
+                        app.ui.draw_mask = app.session.active_mask;
+                    }
+                    return Some(r);
                 }
                 "wbPicker" => {
                     app.ui.right = RightPanel::Edit;

@@ -235,3 +235,89 @@ fn the_bottom_bar_groups_never_overlap_on_an_ipad_in_portrait() {
         assert!(r.left() >= sort.right(), "{id} {r:?} overlaps Sort {sort:?}");
     }
 }
+
+#[test]
+fn clearing_filters_from_the_photo_empties_the_search_field() {
+    let services = Services { png: None, ..Default::default() };
+    let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    let mut h = Headless::new(app, [1194.0, 834.0], 1.0);
+    let r = h.request("ui.set", json!({"view": "detail"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let field = widget(&mut h, "field:search").center();
+    touch(&mut h, field, &[]);
+    let r = h.request("ui.text", json!({"text": "desert"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let r = h.request("ui.key", json!({"key": "Enter"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(h.app.ui.search, "desert");
+    // the "Filtered: …" notice on the photo clears every filter
+    let x = widget(&mut h, "loupe:filters").center();
+    touch(&mut h, x, &[]);
+    for _ in 0..3 {
+        h.step();
+    }
+    assert_eq!(h.app.session.filter, Default::default(), "the filter is gone");
+    assert_eq!(h.app.ui.search, "", "and so is the text in the field");
+}
+
+#[test]
+fn a_tap_on_a_compare_caption_star_rates_that_photo() {
+    let services = Services { png: None, ..Default::default() };
+    let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    let mut h = Headless::new(app, [1194.0, 834.0], 1.0);
+    let r = h.request("ui.set", json!({"view": "detail"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let r = h.request("engine.execute", json!({"command": "view.compare"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    // the mobile shell announces the touch screen at launch with a cancelled touch
+    h.input([egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId(0),
+        phase: egui::TouchPhase::Cancel,
+        pos: egui::Pos2::ZERO,
+        force: None,
+    }]);
+    h.settle(SETTLE);
+    let stars: Vec<String> =
+        h.app.widgets.iter().filter(|(id, _)| id.starts_with("cullStar:") && id.ends_with(":4")).map(|(id, _)| id.clone()).collect();
+    assert_eq!(stars.len(), 2, "Select and Candidate each have stars: {stars:?}");
+    for sid in stars {
+        let photo = lightcraft_catalog::PhotoId(sid.split(':').nth(1).unwrap().parse().unwrap());
+        let before = h.app.session.catalog.photo(photo).unwrap().rating;
+        // re-read: rating one photo makes it the active one, which can move the captions
+        let rect = widget(&mut h, &sid);
+        touch(&mut h, rect.center(), &[]);
+        let want = if before == 4 { 0 } else { 4 };
+        assert_eq!(h.app.session.catalog.photo(photo).unwrap().rating, want, "{sid} rates its own photo (from {before})");
+    }
+}
+
+#[test]
+fn a_new_radial_or_linear_gradient_is_drawn_by_dragging_on_the_photo() {
+    let mut h = detail("panel.masking");
+    let img = h.app.image_rect.expect("image on screen");
+    let at = |x: f32, y: f32| egui::pos2(img.left() + x * img.width(), img.top() + y * img.height());
+    let r = h.request("ui.clickWidget", json!({"id": "maskNew:radial"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.step();
+    // centre at (0.3, 0.3), dragged out to (0.4, 0.45)
+    let path: Vec<egui::Pos2> = (1..=6).map(|i| at(0.3 + 0.1 * i as f32 / 6.0, 0.3 + 0.15 * i as f32 / 6.0)).collect();
+    touch(&mut h, at(0.3, 0.3), &path);
+    let d = develop(&h);
+    let MaskShape::Radial { center, rx, ry, .. } = d.masks[0].components[0].shape.clone() else { panic!("radial: {:?}", d.masks) };
+    assert!((center.x - 0.3).abs() < 0.01 && (center.y - 0.3).abs() < 0.01, "centred where the drag began: {center:?}");
+    assert!(rx > 0.03 && ry > 0.05, "reaching the finger: {rx} {ry}");
+    // a second drag edits it like any mask (the pin moves it), it isn't drawn again
+    touch(&mut h, at(0.3, 0.3), &[at(0.35, 0.3), at(0.5, 0.3)]);
+    let MaskShape::Radial { center: c2, rx: rx2, .. } = develop(&h).masks[0].components[0].shape.clone() else { panic!() };
+    assert!((c2.x - 0.5).abs() < 0.01 && (rx2 - rx).abs() < 1e-9, "moved by its pin: {c2:?}");
+
+    let r = h.request("ui.clickWidget", json!({"id": "maskNew:linear"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.step();
+    touch(&mut h, at(0.6, 0.2), &[at(0.6, 0.3), at(0.6, 0.5), at(0.6, 0.7)]);
+    let d = develop(&h);
+    let MaskShape::Linear { start, end } = d.masks[1].components[0].shape.clone() else { panic!("linear: {:?}", d.masks) };
+    assert!((start.y - 0.2).abs() < 0.01 && (end.y - 0.7).abs() < 0.01, "from press to release: {start:?} {end:?}");
+    h.settle(SETTLE);
+}

@@ -426,6 +426,9 @@ pub struct UiState {
     pub grading_mode: String,
     /// Active on-canvas tool: "", "brush", "linear", "radial", "wbPicker", "straighten", "remove".
     pub tool: String,
+    /// A linear / radial gradient mask just created from its tile (or Tools menu) with its default
+    /// shape: a drag on the photo draws it instead, until it has been drawn or edited.
+    pub draw_mask: Option<u32>,
     pub brush_size: f32,
     pub brush_feather: f32,
     pub brush_flow: f32,
@@ -846,6 +849,7 @@ impl Default for UiState {
             mixer_mode: "hue".into(),
             grading_mode: "3way".into(),
             tool: String::new(),
+            draw_mask: None,
             brush_size: 0.04,
             brush_feather: 50.0,
             brush_flow: 60.0,

@@ -143,7 +143,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                         }
                         "linear" | "radial" => {
                             app.ui.tool = kind.to_string();
-                            let _ = app.run("mask.add", json!({"kind": kind}));
+                            if app.run("mask.add", json!({"kind": kind})).is_ok() {
+                                // drag on the photo to draw it (it starts with a default shape)
+                                app.ui.draw_mask = app.session.active_mask;
+                                app.toast(ui.ctx(), crate::i18n::tr("Drag on the photo to draw the gradient"));
+                            }
                         }
                         k => {
                             let _ = app.run("mask.add", json!({"kind": k}));
