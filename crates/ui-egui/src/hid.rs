@@ -82,6 +82,41 @@ pub fn apple_modifiers(flags: i64) -> Modifiers {
     Modifiers { alt: has(19), ctrl: has(18), shift: has(17), mac_cmd: cmd, command: cmd }
 }
 
+/// While a text field is being edited: is this a key the app handles itself (⌘ / ⌃ combinations,
+/// arrows, Escape, Tab, the navigation and function keys), rather than one that types (letters,
+/// digits, Return, ⌫ — those go through the system's text input, with its dead keys)?
+pub fn edits_by_key(key: Key, m: Modifiers) -> bool {
+    m.command
+        || m.ctrl
+        || matches!(
+            key,
+            Key::Escape
+                | Key::Tab
+                | Key::ArrowUp
+                | Key::ArrowDown
+                | Key::ArrowLeft
+                | Key::ArrowRight
+                | Key::Home
+                | Key::End
+                | Key::PageUp
+                | Key::PageDown
+                | Key::Delete
+                | Key::Insert
+                | Key::F1
+                | Key::F2
+                | Key::F3
+                | Key::F4
+                | Key::F5
+                | Key::F6
+                | Key::F7
+                | Key::F8
+                | Key::F9
+                | Key::F10
+                | Key::F11
+                | Key::F12
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +135,20 @@ mod tests {
         assert_eq!(key(0xE3), None, "the modifier keys themselves come as flags");
         assert_eq!(key(-1), None);
         assert_eq!(key(i64::MAX), None);
+    }
+
+    #[test]
+    fn in_a_text_field_shortcuts_and_navigation_are_keys_and_the_rest_types() {
+        let cmd = apple_modifiers(1 << 20);
+        assert!(edits_by_key(Key::C, cmd), "⌘C copies");
+        assert!(edits_by_key(Key::A, apple_modifiers(1 << 18)), "⌃A");
+        assert!(edits_by_key(Key::ArrowLeft, Modifiers::NONE));
+        assert!(edits_by_key(Key::ArrowLeft, Modifiers::SHIFT), "⇧← selects");
+        assert!(edits_by_key(Key::Escape, Modifiers::NONE));
+        assert!(!edits_by_key(Key::C, Modifiers::NONE), "c types");
+        assert!(!edits_by_key(Key::E, apple_modifiers(1 << 19)), "⌥e is a dead key");
+        assert!(!edits_by_key(Key::Enter, Modifiers::NONE));
+        assert!(!edits_by_key(Key::Backspace, Modifiers::NONE));
     }
 
     #[test]

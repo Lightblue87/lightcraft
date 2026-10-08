@@ -269,7 +269,7 @@ impl eframe::App for App {
         {
             self.keyboard_inset(raw);
             // a hardware keyboard's keys (winit 0.30 passes only typed text on)
-            ios_keys::input(raw, _ctx.egui_wants_keyboard_input());
+            ios_keys::input(raw, _ctx.text_edit_focused());
         }
         #[cfg(target_os = "android")]
         {
@@ -280,6 +280,8 @@ impl eframe::App for App {
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
+        #[cfg(target_os = "ios")]
+        ios_keys::after_frame(ui.ctx());
         #[cfg(target_os = "android")]
         self.follow_text_field(ui.ctx());
     }
