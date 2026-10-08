@@ -78,7 +78,10 @@ fn row<R>(ui: &mut egui::Ui, t: &Tokens, label: &str, add: impl FnOnce(&mut egui
             ui.set_min_width(LABEL_W);
             ui.label(RichText::new(crate::i18n::tr(label)).color(t.text_label));
         });
-        add(ui)
+        // controls wrap under their column rather than widening the dialog (it changed width
+        // between tabs, and the line under the tabs fell short)
+        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 24.0), egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true), add)
+            .inner
     })
     .inner
 }

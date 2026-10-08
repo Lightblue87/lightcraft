@@ -171,6 +171,7 @@ fn crop(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         });
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
             if text_button(ui, "cropRotateLeft", crate::i18n::tr("Rotate Left"), false).clicked() {
                 let _ = app.run("photo.rotateLeft", json!({}));
             }
@@ -180,6 +181,7 @@ fn crop(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         });
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
             if text_button(ui, "cropFlipH", crate::i18n::tr("Flip H"), d.crop.flip_h).clicked() {
                 let _ = app.run("photo.flipHorizontal", json!({}));
             }
@@ -271,7 +273,7 @@ fn crop(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             ];
             let items: Vec<(&str, &str)> = opts.iter().map(|(_, l, k)| (*l, *k)).collect();
             let active = opts.iter().position(|(o, _, _)| *o == app.ui.crop_overlay);
-            if let Some(i) = crate::widgets::segmented(ui, "cropOverlay", &items, active, 4) {
+            if let Some(i) = crate::widgets::segmented(ui, "cropOverlay", &items, active, 3) {
                 app.ui.crop_overlay = opts[i].0;
             }
             if matches!(app.ui.crop_overlay, O::Triangle | O::Spiral)
@@ -880,6 +882,7 @@ fn keywords(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         if !suggestions.is_empty() {
             ui.label(egui::RichText::new(crate::i18n::tr("Suggestions")).color(t.text_dim));
             ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
                 for k in suggestions {
                     let r = ui
                         .add(egui::Button::new(egui::RichText::new(format!("+ {}", k.replace('|', " › "))).color(t.text_label)).corner_radius(10.0));
@@ -908,8 +911,10 @@ fn keyword_set(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let current = sets["current"].as_str().unwrap_or_default().to_string();
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(crate::i18n::tr("Keyword Set")).color(t.text_dim));
+        // as wide as the rest of the row allows (it ran past the panel's margin)
         let combo = egui::ComboBox::from_id_salt("kw-set")
             .selected_text(crate::i18n::builtin_label(&current, current == lightcraft_engine::cmd::keywords::RECENT))
+            .width(ui.available_width() - 8.0)
             .show_ui(ui, |ui| {
                 for set in sets["sets"].as_array().into_iter().flatten() {
                     let name = set["name"].as_str().unwrap_or_default();
@@ -955,6 +960,7 @@ fn keyword_set(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         register(ui.ctx(), "keywordSetCombo", combo.response.rect);
     });
     let kws: Vec<String> = sets["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(str::to_string)).collect();
+    ui.add_space(4.0);
     if kws.is_empty() {
         ui.label(egui::RichText::new(crate::i18n::tr("Keywords you add appear here; ⌥1–⌥9 apply them.")).color(t.text_dim));
         return;

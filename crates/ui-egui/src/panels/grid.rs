@@ -510,11 +510,15 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
     // thumbnail
     let size = thumb_px(img_rect.width().max(img_rect.height()), ppp);
     request_thumb(app, id, size, if onscreen { 10 } else { 5 });
+    // where the photo is drawn: the badges sit along its bottom edge (in the square grid it is
+    // fitted inside the cell, narrower or shorter than it)
+    let mut photo_rect = img_rect;
     if let Some(tex) = app.renderer.thumb(id) {
         let [tw, th] = tex.size;
         // Preserve the decoded preview's ratio when it differs from the catalog dimensions.
         let fit = super::detail::fit_texture_rect(img_rect, [tw, th]);
         p.image(tex.tex.id(), fit, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        photo_rect = fit;
         if active {
             p.rect_stroke(fit.expand(if square { 2.0 } else { 0.0 }), 0.0, Stroke::new(2.0, Color32::WHITE), StrokeKind::Outside);
         } else if selected {
@@ -567,7 +571,7 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         crate::state::GridBadges::Always => true,
         crate::state::GridBadges::Never => false,
     };
-    let badge_bar = Rect::from_min_max(pos2(img_rect.left(), img_rect.bottom() - 24.0), img_rect.right_bottom());
+    let badge_bar = Rect::from_min_max(pos2(photo_rect.left(), photo_rect.bottom() - 24.0), photo_rect.right_bottom());
     if !square && photo.label.is_some() {
         // Justified photos fill the whole cell, so the label shows as a translucent tinted footer
         // over the photo's bottom edge (opaque, it would hide 24 px of every labelled photo).

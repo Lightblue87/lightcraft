@@ -54,21 +54,17 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                     app.ui.dialog = Some(crate::state::Dialog::About);
                 }
             });
-            // bottom icons
-            let bottom = ui.max_rect().bottom();
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(egui::Rect::from_min_max(egui::pos2(ui.max_rect().left(), bottom - 96.0), ui.max_rect().right_bottom())),
-            );
-            child.vertical_centered(|ui| {
-                let sz = vec2(t.strip_w, 40.0);
-                if icon_button(ui, "keywords", Icon::Tag, sz, app.ui.right == RightPanel::Keywords, has_photo, "Keywords (K)").clicked() {
-                    let _ = app.run("panel.keywords", json!({}));
-                }
-                if icon_button(ui, "info", Icon::Info, sz, app.ui.right == RightPanel::Info, has_photo, "Info (I)").clicked() {
-                    let _ = app.run("panel.info", json!({}));
-                }
-            });
+            // bottom icons, from the bottom up: the same margin and spacing as the top ones (a
+            // fixed 96 pt box with the default spacing left a wider gap under Info)
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect()).layout(egui::Layout::bottom_up(egui::Align::Center)));
+            child.spacing_mut().item_spacing.y = 6.0;
+            let sz = vec2(t.strip_w, 40.0);
+            if icon_button(&mut child, "info", Icon::Info, sz, app.ui.right == RightPanel::Info, has_photo, "Info (I)").clicked() {
+                let _ = app.run("panel.info", json!({}));
+            }
+            if icon_button(&mut child, "keywords", Icon::Tag, sz, app.ui.right == RightPanel::Keywords, has_photo, "Keywords (K)").clicked() {
+                let _ = app.run("panel.keywords", json!({}));
+            }
         });
 }
 

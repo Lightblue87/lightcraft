@@ -867,7 +867,8 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &mut ImportDialog) {
     let grid_h = grid_height(ui.available_height(), below.unwrap_or(DEFAULT_BELOW_GRID), cell + 26.0);
     let grid =
         egui::ScrollArea::vertical().id_salt("import-grid").max_height(grid_h).auto_shrink([false, false]).show_viewport(ui, |ui, viewport| {
-            let (area, _) = ui.allocate_exact_size(vec2(avail, rows as f32 * (cell + 26.0)), Sense::hover());
+            // (no gap after the last row: the options below keep the usual spacing)
+            let (area, _) = ui.allocate_exact_size(vec2(avail, (rows as f32 * (cell + 26.0) - 6.0).max(0.0)), Sense::hover());
             for i in 0..n {
                 let (c, r) = (i % cols, i / cols);
                 let local = Rect::from_min_size(pos2(c as f32 * (cell + 6.0), r as f32 * (cell + 26.0)), vec2(cell, cell + 20.0));
@@ -881,7 +882,6 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &mut ImportDialog) {
     if !ui.is_sizing_pass() {
         ui.ctx().data_mut(|m| m.insert_temp(egui::Id::new(GRID_BOTTOM), grid.inner_rect.bottom()));
     }
-    ui.add_space(4.0);
     // options
     if !d.sources.is_empty() {
         field(ui, "Source", |ui| {

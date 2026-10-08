@@ -202,11 +202,16 @@ pub(crate) fn shown_value(spec: &ControlSpec, v: f64) -> String {
 /// that starts up or down scrolls the panel instead, and a tap doesn't move the value (on a phone
 /// the sliders fill the panel, so scrolling would otherwise keep changing them).
 pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_override: Option<&str>) -> SliderOut {
+    slider_padded(ui, spec, value, enabled, label_override, (24.0, 22.0))
+}
+
+/// [`slider`] with its own (left, right) padding: the panels' is 24 / 22 pt; a dialog's slider
+/// lines up with its label column instead.
+pub fn slider_padded(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_override: Option<&str>, pad: (f32, f32)) -> SliderOut {
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width();
     let (row, _) = ui.allocate_exact_size(vec2(w, t.slider_row_h), Sense::hover());
-    let pad_l = 24.0;
-    let pad_r = 22.0;
+    let (pad_l, pad_r) = pad;
     let label_rect = Rect::from_min_size(pos2(row.left() + pad_l, row.top() + 4.0), vec2(w - pad_l - pad_r, 18.0));
     let track_rect = Rect::from_min_max(pos2(row.left() + pad_l, row.top() + 22.0), pos2(row.right() - pad_r, row.top() + 40.0));
     let id = ui.id().with(spec.id);
@@ -475,6 +480,10 @@ pub fn segmented(ui: &mut Ui, id: &str, items: &[(&str, &str)], active: Option<u
     let seg_w = ((w - gap * (per_row as f32 - 1.0)) / per_row as f32).max(24.0);
     let mut clicked = None;
     for (row_i, row) in items.chunks(per_row).enumerate() {
+        // rows as far apart as the segments (panels may set no vertical item spacing)
+        if row_i > 0 {
+            ui.add_space(gap);
+        }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = gap;
             for (j, (label, key)) in row.iter().enumerate() {

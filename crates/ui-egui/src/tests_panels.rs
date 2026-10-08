@@ -220,6 +220,34 @@ fn sidebar_sections_collapse_and_remember_it() {
     assert!(!h.app.ui.sidebar_section_collapsed("albums"), "the plus does not fold Albums");
 }
 
+/// The bottom bar's rating pill holds its stars and flags with even room on both sides (it was
+/// narrower than its contents, so the last flag touched its right edge).
+#[test]
+fn the_rating_pill_pads_its_contents_evenly() {
+    let h = demo([1194.0, 834.0], json!({"view": "photoGrid"}));
+    let pill = widget(&h, "pill:rating");
+    let (first, last) = (widget(&h, "star:bottom:1"), widget(&h, "flag:reject"));
+    assert!(last.right() <= pill.right(), "the flags stay inside the pill: {last:?} in {pill:?}");
+    // the star glyph fills its button; the flag glyphs sit 3 pt inside theirs
+    let left = first.left() - pill.left();
+    let right = pill.right() - (last.right() - 3.0);
+    assert!((left - right).abs() <= 0.5, "even padding: {left} left, {right} right");
+}
+
+/// The tool rail's bottom icons keep the top icons' margin and spacing (a fixed 96 pt box left a
+/// wider gap under Info).
+#[test]
+fn the_tool_rail_is_spaced_the_same_at_both_ends() {
+    let h = demo([1194.0, 834.0], json!({"view": "detail"}));
+    let t = crate::theme::Tokens::default();
+    let (presets, edit) = (widget(&h, "icon:presets"), widget(&h, "icon:edit"));
+    let (keywords, info) = (widget(&h, "icon:keywords"), widget(&h, "icon:info"));
+    let top = presets.top() - t.top_bar_h;
+    let bottom = 834.0 - info.bottom();
+    assert!((top - bottom).abs() <= 1.5, "margin above the first icon {top}, below the last {bottom}");
+    assert!(((edit.top() - presets.bottom()) - (info.top() - keywords.bottom())).abs() <= 0.5, "same gap between icons");
+}
+
 /// Albums nest in folders like the other sidebar trees: a folder row has a disclosure triangle
 /// (`albumToggle:<id>`), plain albums have none, and folding a folder hides what is inside it.
 #[test]

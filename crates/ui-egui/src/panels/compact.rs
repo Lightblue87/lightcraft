@@ -24,6 +24,10 @@ use crate::widgets::{icon_button, register};
 /// Content width (points, inside the safe area) below which the compact layout is used.
 pub const COMPACT_WIDTH: f32 = 600.0;
 
+/// Side margin of the compact top bar, bottom bar and the sheet's tool row, so their icon
+/// columns line up.
+const BAR_MARGIN: i8 = 6;
+
 /// Touch-friendly button size in the compact bars.
 const BUTTON: egui::Vec2 = egui::vec2(40.0, 40.0);
 
@@ -77,7 +81,7 @@ fn topbar(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::top("top_bar")
         .exact_size(t.top_bar_h + 4.0)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left: BAR_MARGIN, right: BAR_MARGIN, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -160,7 +164,7 @@ fn bottombar(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("bottom_bar")
         .exact_size(t.bottom_bar_h + 4.0)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left: 6, right: 6, top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left: BAR_MARGIN, right: BAR_MARGIN, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
             ui.horizontal_centered(|ui| {
@@ -224,7 +228,8 @@ fn sheet(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             register(ui.ctx(), "panel:sheet", ui.max_rect());
             egui::Panel::top("compact_sheet_tools")
                 .exact_size(BUTTON.y + 4.0)
-                .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 6, right: 6, top: 2, bottom: 2 }))
+                // (inside the sheet's 1 pt border: its icons line up with the bars')
+                .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: BAR_MARGIN - 1, right: BAR_MARGIN - 1, top: 2, bottom: 2 }))
                 .show(ui, |ui| tools(app, ui));
             if app.ui.presets {
                 super::presets::show(app, ui);
@@ -336,7 +341,10 @@ pub fn stacked_row<R, F: FnOnce(&mut egui::Ui) -> R>(ui: &mut egui::Ui, label: e
     Ok(ui
         .vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
-            ui.label(label);
+            // (no blank line for a row without a label)
+            if !label.text().is_empty() {
+                ui.label(label);
+            }
             ui.horizontal_wrapped(add).inner
         })
         .inner)

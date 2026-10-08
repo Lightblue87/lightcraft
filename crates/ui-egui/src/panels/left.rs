@@ -223,7 +223,8 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let plus_right = (ar.left() + viewport.max.x).min(ar.right());
             let mut hdr = ui.new_child(
                 egui::UiBuilder::new()
-                    .max_rect(Rect::from_min_max(pos2(plus_right - 50.0, ar.top()), pos2(plus_right, ar.bottom())))
+                    // the "+" glyph (centred in its 26 pt button) ending where the rows' counts end
+                    .max_rect(Rect::from_min_max(pos2(plus_right - 63.0, ar.top()), pos2(plus_right - 13.0, ar.bottom())))
                     .layout(egui::Layout::right_to_left(egui::Align::Center)),
             );
             let plus = icon_button(&mut hdr, "albumNew", Icon::Plus, vec2(26.0, 26.0), false, true, "Create Album");
@@ -664,7 +665,8 @@ fn date_row(app: &mut LightcraftApp, ui: &mut egui::Ui, key: &str, label: &str, 
     let open_id = egui::Id::new(("date-open", key.to_string()));
     let mut open: bool = ui.data(|d| d.get_temp(open_id)).unwrap_or(false);
     let sel = app.session.filter.date.as_deref() == Some(key);
-    let resp = row(app, ui, &format!("date:{key}"), Icon::Clock, label, Some(count), sel, indent);
+    // room for the disclosure triangle left of the icon, as in the Local folder tree
+    let resp = row(app, ui, &format!("date:{key}"), Icon::Clock, label, Some(count), sel, indent + 12.0);
     if key.len() < 10 {
         let tr = disclosure_triangle(ui, &resp, indent, open, egui::Id::new(("date-tri", key.to_string())), format!("dateToggle:{key}"));
         if tr.clicked() {
@@ -1364,7 +1366,8 @@ fn keyword_rows(app: &mut LightcraftApp, ui: &mut egui::Ui, nodes: &[KeywordNode
         let open_id = egui::Id::new(("kw-open", n.path.to_lowercase()));
         let mut open: bool = ui.data(|d| d.get_temp(open_id)).unwrap_or(false);
         let sel = app.session.filter.keyword.as_deref().is_some_and(|k| k.eq_ignore_ascii_case(&n.path));
-        let resp = row(app, ui, &format!("keyword:{}", n.path), Icon::Tag, &n.name, Some(n.count), sel, indent);
+        // room for the disclosure triangle left of the icon, as in the Local folder tree
+        let resp = row(app, ui, &format!("keyword:{}", n.path), Icon::Tag, &n.name, Some(n.count), sel, indent + 12.0);
         if !n.children.is_empty() {
             let tr =
                 disclosure_triangle(ui, &resp, indent, open, egui::Id::new(("kw-tri", n.path.to_lowercase())), format!("keywordToggle:{}", n.path));

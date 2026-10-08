@@ -2,7 +2,7 @@
 //! edited state and camera / lens / keyword pickers — every control drives `library.filter`.
 //! "Save as Smart Album…" keeps the current view as a live album; "Clear" resets the filter.
 
-use egui::{Color32, Rect, Sense, Stroke, StrokeKind, vec2};
+use egui::{Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use lightcraft_catalog::{ColorLabel, Flag, MediaKind, RatingOp};
 use serde_json::{Value, json};
 
@@ -102,7 +102,8 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     register(ui.ctx(), "filterbar", bar);
     let f = app.session.filter.clone();
     let row = |ui: &mut egui::Ui, i: f32| {
-        let r = Rect::from_min_size(bar.min + vec2(16.0, 4.0 + i * (HEIGHT - 8.0)), vec2(bar.width() - 32.0, HEIGHT - 8.0));
+        // 20 pt in, in line with the grid's title and the filter chips
+        let r = Rect::from_min_size(bar.min + vec2(20.0, 4.0 + i * (HEIGHT - 8.0)), vec2(bar.width() - 40.0, HEIGHT - 8.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center)));
         c.spacing_mut().item_spacing.x = 4.0;
         c
@@ -280,7 +281,14 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         let _ = app.run("library.clearFilter", json!({}));
     }
     // filter presets: apply one, save the current filter, delete
-    let presets = ui.button(egui::RichText::new(crate::i18n::tr("Presets ▾")).font(t.font(12.5)));
+    // (the UI font has no "▾": a painted chevron, as `widgets::dropdown` draws it)
+    let presets = ui.button(egui::RichText::new(format!("{}    ", crate::i18n::tr("Presets"))).font(t.font(12.5)));
+    paint(
+        ui.painter(),
+        Rect::from_center_size(pos2(presets.rect.right() - 12.0, presets.rect.center().y + 1.0), vec2(12.0, 12.0)),
+        Icon::ChevronDown,
+        t.text_label,
+    );
     register(ui.ctx(), "button:filterPresets", presets.rect);
     egui::Popup::menu(&presets).show(|ui| {
         let names: Vec<String> = app.session.filter_presets.iter().map(|f| f.name.clone()).collect();

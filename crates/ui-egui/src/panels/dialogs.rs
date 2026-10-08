@@ -404,7 +404,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     let (preview, total) = rename_preview(app, ui.ctx(), template, *start as usize);
                     match &preview {
                         Some(rows) => {
-                            egui::Grid::new("rename-preview").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
+                            egui::Grid::new("rename-preview").num_columns(3).spacing([8.0, 2.0]).min_col_width(0.0).show(ui, |ui| {
                                 for pl in rows {
                                     ui.label(egui::RichText::new(&pl.from).color(t.text_dim));
                                     ui.label(egui::RichText::new("→").color(t.text_dim));
@@ -899,7 +899,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     );
                 }
                 Dialog::About => {
-                    ui.set_min_width(680.0);
+                    // (the phone's width on a phone, as Settings does)
+                    ui.set_min_width(crate::panels::compact::dialog_width(ui.ctx(), 680.0, 16.0));
                     let tab_id = egui::Id::new("about_tab");
                     let mut tab = ui.data_mut(|d| d.get_temp::<u8>(tab_id)).unwrap_or(0);
                     ui.horizontal(|ui| {
@@ -1517,7 +1518,8 @@ const WM_OPACITY: ControlSpec = spec("export.watermarkOpacity", "Opacity (%)", 5
 
 /// A themed slider row editing `v`; true when it changed.
 fn num(ui: &mut egui::Ui, spec: &ControlSpec, v: &mut f64) -> bool {
-    match crate::widgets::slider(ui, spec, *v, true, None).value {
+    // in line with the dialog's label column (the panels' 24 / 22 pt slider padding indented it)
+    match crate::widgets::slider_padded(ui, spec, *v, true, None, (0.0, 0.0)).value {
         Some(n) => {
             *v = n;
             true

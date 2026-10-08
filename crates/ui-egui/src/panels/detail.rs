@@ -2137,7 +2137,8 @@ pub(crate) fn filmstrip(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
     // only a new active photo (or the strip appearing) scrolls it; see `grid::follow_active`
     let follow = super::grid::follow_active(child.ctx(), egui::Id::new("film-follow-active"), active);
     egui::ScrollArea::horizontal().id_salt("filmstrip").auto_shrink([false, false]).show_viewport(&mut child, |ui, vp| {
-        let (area, _) = ui.allocate_exact_size(vec2(ids.len() as f32 * cell_w, r.height() - 16.0), Sense::hover());
+        // as tall as the strip inside its 4 pt margins (egui's scroll bar floats over the cells)
+        let (area, _) = ui.allocate_exact_size(vec2(ids.len() as f32 * cell_w, r.height() - 8.0), Sense::hover());
         app.film_scroll = Some(vp.left());
         for (i, id) in ids.iter().enumerate() {
             let cr = Rect::from_min_size(pos2(area.left() + i as f32 * cell_w, area.top()), vec2(cell_w, area.height()));

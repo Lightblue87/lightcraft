@@ -92,7 +92,8 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         soft_proofing(app, ui, id);
     }
     // header: Edit + Auto / B&W / HDR
-    let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
+    // (30 pt: the title's room above matches the buttons' 14 pt below)
+    let (hr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
     ui.painter().text(pos2(hr.left() + 24.0, hr.bottom() - 10.0), Align2::LEFT_CENTER, crate::i18n::tr("Edit"), t.semibold(15.0), t.text);
     egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 14 }).show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -700,7 +701,8 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
     });
     let ch = app.ui.curve_channel.clone();
     let w = ui.available_width();
-    let side = (w - 48.0).max(80.0);
+    // between the panel's 24 / 22 pt margins, like the sliders
+    let side = (w - 24.0 - 22.0).max(80.0);
     // the parametric curve has its split handles under the graph
     let handles_h = if ch == "parametric" { SPLIT_HANDLES_H } else { 0.0 };
     let (outer, _) = ui.allocate_exact_size(vec2(w, side + 12.0 + handles_h), Sense::hover());
@@ -1130,23 +1132,14 @@ fn mixer(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings) {
     });
     // targeted adjustment: pick the attribute, then drag on the photo
     egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 2, bottom: 2 }).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            let (r, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
-            paint(ui.painter(), r, Icon::Target, t.icon);
-            let items: &[(&str, &str)] =
-                if crate::is_bw(d) { &[("lum", "B&W Mix")] } else { &[("hue", "Hue"), ("sat", "Saturation"), ("lum", "Luminance")] };
-            for (k, label) in items {
-                let tool = format!("tat:{k}");
-                let active = app.ui.tool == tool;
-                if text_button(ui, &format!("tatMixer-{k}"), label, active)
-                    .on_hover_text(crate::i18n::tr("Targeted adjustment: drag up/down on the photo to adjust the colours there"))
-                    .clicked()
-                {
-                    app.ui.tool = if active { String::new() } else { tool };
-                }
-            }
-        });
+        // segments across the panel's width (three text buttons beside a target icon overflowed it)
+        let items: &[(&str, &str)] =
+            if crate::is_bw(d) { &[("B&W Mix", "lum")] } else { &[("Hue", "hue"), ("Saturation", "sat"), ("Luminance", "lum")] };
+        let active = items.iter().position(|(_, k)| app.ui.tool == format!("tat:{k}"));
+        if let Some(i) = crate::widgets::segmented(ui, "tatMixer", items, active, items.len()) {
+            let tool = format!("tat:{}", items[i].1);
+            app.ui.tool = if active == Some(i) { String::new() } else { tool };
+        }
     });
     let b = bands[sel];
     if crate::is_bw(d) {

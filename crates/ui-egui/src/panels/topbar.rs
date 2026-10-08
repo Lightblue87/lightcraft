@@ -47,7 +47,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let left = if app.integrated_titlebar { 78 } else { 10 };
     egui::Panel::top("top_bar")
         .exact_size(t.top_bar_h)
-        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left, right: 12, top: 0, bottom: 0 }))
+        .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin { left, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
             if app.integrated_titlebar {
@@ -150,7 +150,8 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 let _ = app.run("view.filterBar", json!({}));
             }
             // right icons
-            let mut x = full.right() - 18.0;
+            // the last 28 pt icon flush with the margin, as the sidebar button is on the left
+            let mut x = full.right() - 14.0;
             // saving is failing: the cloud icon turns into a warning until a save succeeds
             let unsaved = app.session.unsaved().map(|(n, e)| {
                 crate::i18n::tr_format!(
