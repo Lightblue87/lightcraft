@@ -311,13 +311,16 @@ pub fn dialog_width(ctx: &egui::Context, desktop: f32, margin_x: f32) -> f32 {
     desktop.min((ctx.content_rect().width() - 2.0 * (DIALOG_INSET + margin_x)).max(120.0))
 }
 
-/// In the compact layout a dialog window spans the screen (inside the safe area) at a fixed width
-/// and scrolls when it is taller than the screen; elsewhere `win` is returned unchanged.
+/// A dialog window is as tall as its contents up to the screen, then scrolls (an iPad mini in
+/// landscape is 744 pt tall, less than the Export dialog), and stays inside the safe area. In the
+/// compact layout it also spans the screen's width.
 pub fn dialog<'a>(ctx: &egui::Context, win: egui::Window<'a>) -> egui::Window<'a> {
-    if !is_compact(ctx) {
-        return win;
-    }
     let area = ctx.content_rect().shrink(DIALOG_INSET);
+    if !is_compact(ctx) {
+        // room up to the screen's height (egui's scroll area inside shrinks to the contents; a
+        // window that can't be resized keeps its default height as the room otherwise)
+        return win.default_height(area.height()).max_height(area.height()).vscroll(true).constrain_to(area);
+    }
     // egui's window sizes are its outer size (frame margins included)
     let w = area.width();
     // auto-sized: as tall as its contents up to the screen, then it scrolls

@@ -39,7 +39,8 @@ fn widget(h: &mut Headless, id: &str) -> egui::Rect {
 
 /// One finger pressed at `from`, moved through `path` (one move per frame), lifted at the end.
 fn touch(h: &mut Headless, from: egui::Pos2, path: &[egui::Pos2]) {
-    let t = |phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos, force: Some(0.5) };
+    // a finger: no pressure (UIKit reports force for a pencil only)
+    let t = |phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos, force: None };
     let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
     h.input([t(egui::TouchPhase::Start, from), egui::Event::PointerMoved(from), button(from, true)]);
     h.step();
@@ -321,3 +322,20 @@ fn a_new_radial_or_linear_gradient_is_drawn_by_dragging_on_the_photo() {
     assert!((start.y - 0.2).abs() < 0.01 && (end.y - 0.7).abs() < 0.01, "from press to release: {start:?} {end:?}");
     h.settle(SETTLE);
 }
+
+#[test]
+fn the_export_dialog_fits_an_ipad_mini_in_landscape() {
+    let services = Services { png: None, ..Default::default() };
+    let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    let mut h = Headless::new(app, [1133.0, 744.0], 1.0);
+    let r = h.request("ui.set", json!({"view": "detail"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let r = h.request("ui.menu.invoke", json!({"command": "dialog.export"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..4 {
+        h.step();
+    }
+    let rect = h.view.ctx.memory(|m| m.area_rect(egui::Id::new("lightcraft-dialog"))).expect("the dialog is open");
+    assert!(rect.top() >= 0.0 && rect.bottom() <= 744.0, "the whole dialog is on screen (it scrolls inside): {rect:?}");
+}
+

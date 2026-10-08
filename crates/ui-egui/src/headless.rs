@@ -393,17 +393,23 @@ impl Headless {
         }
     }
 
-    /// Run frames until widget `id` is on screen (lists that fill in from the disk or expand take
-    /// a few frames, more on a loaded machine), at most `timeout`. Returns whether it showed up.
+    /// Run frames until widget `id` is on screen and holds still (lists that fill in from the disk
+    /// or expand take a few frames, more on a loaded machine; rows above it can still arrive),
+    /// at most `timeout`. Returns whether it showed up.
     pub fn wait_for_widget(&mut self, id: &str, timeout: Duration) -> bool {
         let t0 = Instant::now();
+        let mut last = None;
         loop {
-            if self.app.widgets.iter().any(|(w, _)| w == id) {
+            let now = self.app.widgets.iter().find(|(w, _)| w == id).map(|(_, r)| *r);
+            // rows above it may still come in from the disk (the Local section's folders)
+            let listing = crate::panels::left::fs_cached_running(&self.view.ctx) > 0;
+            if now.is_some() && now == last && !listing {
                 return true;
             }
             if t0.elapsed() > timeout {
-                return false;
+                return now.is_some();
             }
+            last = now;
             self.step();
         }
     }
@@ -2939,7 +2945,8 @@ mod tests {
         let services = crate::Services { png: None, pick_folder: Some(Box::new(move || Some(dest_s.clone()))), ..Default::default() };
         let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo().with_fs(), services);
         app.ui.view = crate::state::ViewMode::PhotoGrid;
-        let mut h = Headless::new(app, [1300.0, 900.0], 1.0);
+        // tall enough for the whole Import dialog (a shorter window scrolls it)
+        let mut h = Headless::new(app, [1300.0, 1400.0], 1.0);
         let t = Duration::from_secs(10);
         let r = h.request("engine.execute", json!({"command": "file.addPhotos", "params": {"paths": [src.to_string_lossy()]}}), t);
         assert_eq!(r["result"]["scanning"], true, "{r}");
@@ -3089,7 +3096,8 @@ mod tests {
         session.open_library(&lib, false).unwrap();
         let mut app = LightcraftApp::new(session, crate::Services { png: None, ..Default::default() });
         app.ui.view = crate::state::ViewMode::PhotoGrid;
-        let mut h = Headless::new(app, [1300.0, 1000.0], 1.0);
+        // tall enough for the whole Import dialog (a shorter window scrolls it)
+        let mut h = Headless::new(app, [1300.0, 1400.0], 1.0);
         let t = Duration::from_secs(10);
         let r =
             h.request("engine.execute", json!({"command": "file.addPhotos", "params": {"paths": [dir.join("IMG_0007.png").to_string_lossy()]}}), t);
