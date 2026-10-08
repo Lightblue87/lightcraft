@@ -12,6 +12,7 @@ pub mod credits;
 pub mod date_picker;
 pub mod export_task;
 pub mod headless;
+pub mod hid;
 pub mod i18n;
 pub mod icons;
 pub mod import;

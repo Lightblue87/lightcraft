@@ -98,6 +98,14 @@ browsers:
   over `content://` URIs from a small read-only `FilesProvider` (androidx's FileProvider
   without androidx). `ui-egui` gained two optional host services for this, `export_dir` and
   `share`.
+- **Hardware keyboard (iPad):** shortcuts work from a Magic Keyboard or any Bluetooth keyboard,
+  with ⌘ as the command key (menus show ⌘), plus arrows, Escape and the single-key shortcuts.
+  winit 0.30's iOS view only receives typed text, so while no text field has focus a hidden view
+  of the shell (`src/ios_keys.rs`) is the first responder and turns `UIPress` key codes into egui
+  key events (`lightcraft_ui_egui::hid`). In a text field, keys go to the field as typed text.
+- **Touch and pencil:** the canvas tools grab at the point a finger or pencil went down, handles
+  reach at least 22 pt, a lifted finger still "clicks" menu items, and new linear / radial
+  gradients are drawn by dragging on the photo.
 - **Soft keyboard:** the layout moves up above the keyboard (bottom bar, sheet, dialogs), and a
   focused text field it would cover is scrolled into view. On iOS the shell's scene delegate
   reads the keyboard frame from UIKit. On Android the shell compares the decor view's
@@ -154,6 +162,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
+- **In a text field, an iPad keyboard only types.** winit's view has the keyboard then, and it
+  takes typed text and ⌫ only: arrows, ⌘A / ⌘C / ⌘V and Escape do nothing there. Outside text
+  fields every key works (see Hardware keyboard).
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
   dialogs (see below). There's no landscape-specific arrangement.
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.

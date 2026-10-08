@@ -751,7 +751,8 @@ pub fn show_in_window(app: &mut LightcraftApp, ui: &mut egui::Ui, max_width: f32
     let total: f32 = widths.iter().sum();
     let mut clicked: Option<(String, Value)> = None;
     let start = ui.cursor().left();
-    let mac = ui.ctx().os() == egui::os::OperatingSystem::Mac;
+    // ⌘ on Apple keyboards: a Mac's and an iPad's (see `hid`)
+    let mac = matches!(ui.ctx().os(), egui::os::OperatingSystem::Mac | egui::os::OperatingSystem::IOS);
     // Menus hang below the whole top bar and never grow past the window (#189): a tall menu
     // scrolls instead of egui sliding it up over the titles.
     let bar_bottom = Some(ui.max_rect().bottom());

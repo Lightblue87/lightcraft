@@ -11,6 +11,8 @@
 #[cfg(target_os = "android")]
 mod android_jni;
 #[cfg(target_os = "ios")]
+mod ios_keys;
+#[cfg(target_os = "ios")]
 mod ios_picker;
 #[cfg(target_os = "ios")]
 mod ios_scene;
@@ -264,7 +266,11 @@ impl eframe::App for App {
             });
         }
         #[cfg(target_os = "ios")]
-        self.keyboard_inset(raw);
+        {
+            self.keyboard_inset(raw);
+            // a hardware keyboard's keys (winit 0.30 passes only typed text on)
+            ios_keys::input(raw, _ctx.egui_wants_keyboard_input());
+        }
         #[cfg(target_os = "android")]
         {
             self.window_insets(_ctx, raw);
@@ -370,6 +376,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             #[cfg(target_os = "ios")]
             if let Ok(h) = raw_window_handle::HasWindowHandle::window_handle(_cc) {
                 ios_scene::set_window(h.as_raw());
+                ios_keys::install(h.as_raw(), &_cc.egui_ctx);
             }
             #[cfg(target_os = "android")]
             {
