@@ -19,8 +19,12 @@ use crate::widgets::register;
 pub enum Gesture {
     Brush {
         points: Vec<Point>,
-        /// Pen / pencil pressure per point (0..1), while every point so far had one.
-        pressure: Vec<f32>,
+        /// Pen / pencil pressure per point (0..1) as reported; `None` where none was (a finger, a
+        /// mouse, a Pencil's first contact). See [`fill_pressure`].
+        pressure: Vec<Option<f32>>,
+        /// The last pressure reported during the stroke: frames without a touch event (the app
+        /// redraws between the Pencil's reports) keep it.
+        last: Option<f32>,
     },
     Spot {
         points: Vec<Point>,
@@ -1509,13 +1513,21 @@ fn guided_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respo
     }
 }
 
-/// Record the pen pressure of the stroke's newest points (`n` points in all now). A point without
-/// one (a finger, a mouse) drops the pressure for the whole stroke.
-fn push_pressure(pressure: &mut Vec<f32>, n: usize, force: Option<Option<f32>>) {
-    match force.flatten().filter(|f| f.is_finite() && *f > 0.0) {
-        Some(f) if pressure.len() + 1 >= n.saturating_sub(1) => pressure.resize(n, f.clamp(0.0, 1.0)),
-        _ => pressure.clear(),
-    }
+/// A stroke's pressure per point, with the points that had none (a Pencil's first contact reports
+/// no force yet) taking the nearest reported value; `None` when nothing reported any (a finger or
+/// a mouse: the stroke paints evenly).
+pub(crate) fn fill_pressure(pressure: &[Option<f32>]) -> Option<Vec<f32>> {
+    let first = pressure.iter().flatten().next().copied()?;
+    let mut last = first;
+    Some(
+        pressure
+            .iter()
+            .map(|p| {
+                last = p.unwrap_or(last);
+                last.clamp(0.0, 1.0)
+            })
+            .collect(),
+    )
 }
 
 /// How the painted preview scales with pressure (as `mask.brushStroke` sizes pen strokes: a
@@ -1772,10 +1784,11 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             p.circle_stroke(h, r, Stroke::new(1.0, Color32::WHITE));
             p.circle_stroke(h, r * (1.0 - app.ui.brush_feather / 100.0).max(0.05), Stroke::new(1.0, Color32::from_white_alpha(120)));
         }
-        // a pen or pencil reports its pressure with each touch (a finger and a mouse don't)
+        // a pen or pencil reports its pressure with each touch (a finger and a mouse don't):
+        // `Some(force)` when a touch event came this frame
         let force = ui.input(|i| {
             i.events.iter().rev().find_map(|e| match e {
-                egui::Event::Touch { force, .. } => Some(*force),
+                egui::Event::Touch { force, .. } => Some(force.filter(|f| f.is_finite() && *f > 0.0).map(|f| f.min(1.0))),
                 _ => None,
             })
         });
@@ -1784,34 +1797,41 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
         {
             let n = map.norm(q);
             match &mut app.gesture {
-                Some(Gesture::Brush { points, pressure }) => {
-                    points.push(n);
-                    push_pressure(pressure, points.len(), force);
+                Some(Gesture::Brush { points, pressure, last }) => {
+                    if let Some(f) = force {
+                        *last = f.or(*last);
+                    }
+                    // a redraw without movement adds nothing
+                    if points.last() != Some(&n) {
+                        points.push(n);
+                        pressure.push(*last);
+                    }
                 }
                 // from where it was pressed, not where the drag threshold was passed
                 _ => {
                     let points = stroke_start(ui, resp, map, n);
-                    let mut pressure = Vec::new();
-                    push_pressure(&mut pressure, points.len(), force);
-                    app.gesture = Some(Gesture::Brush { points, pressure });
+                    let last = force.flatten();
+                    let pressure = vec![last; points.len()];
+                    app.gesture = Some(Gesture::Brush { points, pressure, last });
                 }
             }
         }
         // the stroke being painted (the render shows it once it's committed)
-        if let Some(Gesture::Brush { points, pressure }) = &app.gesture {
+        if let Some(Gesture::Brush { points, pressure, .. }) = &app.gesture {
+            let filled = fill_pressure(pressure);
             for (i, q) in points.iter().enumerate() {
-                p.circle_filled(map.screen(*q), r * pressure_scale(pressure.get(i).copied()), tint);
+                p.circle_filled(map.screen(*q), r * pressure_scale(filled.as_ref().and_then(|f| f.get(i).copied())), tint);
             }
         }
         if (resp.drag_stopped() || resp.clicked())
-            && let Some(Gesture::Brush { points, pressure }) = app.gesture.take()
+            && let Some(Gesture::Brush { points, pressure, .. }) = app.gesture.take()
         {
             let pts: Vec<[f64; 2]> = points.iter().map(|q| [q.x, q.y]).collect();
             // holding ⌥ (Alt) paints with the other mode: Erase while adding, Add while erasing
             let erase = app.ui.brush_erase != resp.ctx.input(|i| i.modifiers.alt);
             let mut params = json!({"points": pts, "size": app.ui.brush_size, "feather": app.ui.brush_feather, "flow": app.ui.brush_flow,
                        "erase": erase, "autoMask": app.ui.brush_auto_mask});
-            if pressure.len() == points.len() {
+            if let Some(pressure) = fill_pressure(&pressure).filter(|p| p.len() == points.len()) {
                 params["pressure"] = json!(pressure);
             }
             let _ = app.run("mask.brushStroke", params);
@@ -2318,5 +2338,18 @@ mod tests {
         assert_eq!(film_label("IMG_20240712_153012"), "IMG_20240712_…");
         assert_eq!(film_label("DSC_0001"), "DSC_0001");
         assert_eq!(film_label(""), "");
+    }
+}
+
+#[cfg(test)]
+mod pressure_tests {
+    use super::fill_pressure;
+
+    #[test]
+    fn missing_pressure_takes_the_nearest_reported_value() {
+        assert_eq!(fill_pressure(&[None, None]), None, "a finger");
+        assert_eq!(fill_pressure(&[]), None);
+        assert_eq!(fill_pressure(&[None, Some(0.2), None, Some(0.9), None]), Some(vec![0.2, 0.2, 0.2, 0.9, 0.9]));
+        assert_eq!(fill_pressure(&[Some(3.0)]), Some(vec![1.0]), "clamped");
     }
 }

@@ -388,3 +388,35 @@ fn a_pencil_double_tap_swaps_the_brush_between_add_and_erase() {
     assert!(h.app.pencil_tap(&ctx));
     assert!(!h.app.ui.brush_erase, "and back");
 }
+
+#[test]
+fn pencil_pressure_survives_frames_without_touch_events_and_a_zero_first_contact() {
+    // on a device the app redraws between the Pencil's reports (renders in flight), and a Pencil's
+    // first contact can report no force yet
+    let mut h = detail("panel.masking");
+    let r = h.request("engine.execute", json!({"command": "tool.brush"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let img = h.app.image_rect.expect("image on screen");
+    let at = |x: f32| egui::pos2(img.left() + x * img.width(), img.center().y);
+    let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    let pen = |phase, pos, force| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(7), phase, pos, force: Some(force) };
+    h.input([pen(egui::TouchPhase::Start, at(0.2), 0.0), egui::Event::PointerMoved(at(0.2)), button(at(0.2), true)]);
+    h.step();
+    h.step();
+    for (i, f) in [0.1, 0.1, 0.1, 1.0, 1.0, 1.0].into_iter().enumerate() {
+        let q = at(0.25 + 0.05 * i as f32);
+        h.input([pen(egui::TouchPhase::Move, q, f), egui::Event::PointerMoved(q)]);
+        h.step();
+        // a redraw with no new touch
+        h.step();
+    }
+    let end = at(0.25 + 0.05 * 5.0);
+    h.input([pen(egui::TouchPhase::End, end, 1.0), button(end, false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+    let d = develop(&h);
+    let MaskShape::Brush { strokes } = &d.masks[0].components[0].shape else { panic!("a brush mask: {:?}", d.masks) };
+    assert!(strokes.len() >= 2, "light and firm parts: {strokes:?}");
+    assert!(strokes[0].size < strokes[strokes.len() - 1].size, "the firm part is wider: {strokes:?}");
+    h.settle(SETTLE);
+}
