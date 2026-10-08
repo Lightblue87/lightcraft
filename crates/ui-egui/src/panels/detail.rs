@@ -19,6 +19,8 @@ use crate::widgets::register;
 pub enum Gesture {
     Brush {
         points: Vec<Point>,
+        /// Pen / pencil pressure per point (0..1), while every point so far had one.
+        pressure: Vec<f32>,
     },
     Spot {
         points: Vec<Point>,
@@ -1507,6 +1509,21 @@ fn guided_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respo
     }
 }
 
+/// Record the pen pressure of the stroke's newest points (`n` points in all now). A point without
+/// one (a finger, a mouse) drops the pressure for the whole stroke.
+fn push_pressure(pressure: &mut Vec<f32>, n: usize, force: Option<Option<f32>>) {
+    match force.flatten().filter(|f| f.is_finite() && *f > 0.0) {
+        Some(f) if pressure.len() + 1 >= n.saturating_sub(1) => pressure.resize(n, f.clamp(0.0, 1.0)),
+        _ => pressure.clear(),
+    }
+}
+
+/// How the painted preview scales with pressure (as `mask.brushStroke` sizes pen strokes: a
+/// quarter of the size at the lightest touch, all of it at the firmest).
+fn pressure_scale(p: Option<f32>) -> f32 {
+    p.map_or(1.0, |p| 0.25 + 0.75 * p.clamp(0.0, 1.0))
+}
+
 /// The first points of a brush or spot stroke whose first position is `n`: the press point too
 /// when the stroke began as a drag (the pointer is past the drag threshold by then).
 fn stroke_start(ui: &egui::Ui, resp: &egui::Response, map: &CanvasMap, n: Point) -> Vec<Point> {
@@ -1755,33 +1772,49 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             p.circle_stroke(h, r, Stroke::new(1.0, Color32::WHITE));
             p.circle_stroke(h, r * (1.0 - app.ui.brush_feather / 100.0).max(0.05), Stroke::new(1.0, Color32::from_white_alpha(120)));
         }
+        // a pen or pencil reports its pressure with each touch (a finger and a mouse don't)
+        let force = ui.input(|i| {
+            i.events.iter().rev().find_map(|e| match e {
+                egui::Event::Touch { force, .. } => Some(*force),
+                _ => None,
+            })
+        });
         if let Some(q) = resp.interact_pointer_pos()
             && (resp.drag_started() || resp.dragged() || resp.clicked())
         {
             let n = map.norm(q);
             match &mut app.gesture {
-                Some(Gesture::Brush { points }) => points.push(n),
+                Some(Gesture::Brush { points, pressure }) => {
+                    points.push(n);
+                    push_pressure(pressure, points.len(), force);
+                }
                 // from where it was pressed, not where the drag threshold was passed
-                _ => app.gesture = Some(Gesture::Brush { points: stroke_start(ui, resp, map, n) }),
+                _ => {
+                    let points = stroke_start(ui, resp, map, n);
+                    let mut pressure = Vec::new();
+                    push_pressure(&mut pressure, points.len(), force);
+                    app.gesture = Some(Gesture::Brush { points, pressure });
+                }
             }
         }
         // the stroke being painted (the render shows it once it's committed)
-        if let Some(Gesture::Brush { points }) = &app.gesture {
-            for q in points {
-                p.circle_filled(map.screen(*q), r, tint);
+        if let Some(Gesture::Brush { points, pressure }) = &app.gesture {
+            for (i, q) in points.iter().enumerate() {
+                p.circle_filled(map.screen(*q), r * pressure_scale(pressure.get(i).copied()), tint);
             }
         }
         if (resp.drag_stopped() || resp.clicked())
-            && let Some(Gesture::Brush { points }) = app.gesture.take()
+            && let Some(Gesture::Brush { points, pressure }) = app.gesture.take()
         {
             let pts: Vec<[f64; 2]> = points.iter().map(|q| [q.x, q.y]).collect();
             // holding ⌥ (Alt) paints with the other mode: Erase while adding, Add while erasing
             let erase = app.ui.brush_erase != resp.ctx.input(|i| i.modifiers.alt);
-            let _ = app.run(
-                "mask.brushStroke",
-                json!({"points": pts, "size": app.ui.brush_size, "feather": app.ui.brush_feather, "flow": app.ui.brush_flow,
-                       "erase": erase, "autoMask": app.ui.brush_auto_mask}),
-            );
+            let mut params = json!({"points": pts, "size": app.ui.brush_size, "feather": app.ui.brush_feather, "flow": app.ui.brush_flow,
+                       "erase": erase, "autoMask": app.ui.brush_auto_mask});
+            if pressure.len() == points.len() {
+                params["pressure"] = json!(pressure);
+            }
+            let _ = app.run("mask.brushStroke", params);
         }
         return;
     }

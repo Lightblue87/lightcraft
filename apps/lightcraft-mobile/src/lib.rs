@@ -13,6 +13,8 @@ mod android_jni;
 #[cfg(target_os = "ios")]
 mod ios_keys;
 #[cfg(target_os = "ios")]
+mod ios_pencil;
+#[cfg(target_os = "ios")]
 mod ios_picker;
 #[cfg(target_os = "ios")]
 mod ios_scene;
@@ -270,6 +272,11 @@ impl eframe::App for App {
             self.keyboard_inset(raw);
             // a hardware keyboard's keys (winit 0.30 passes only typed text on)
             ios_keys::input(raw, _ctx.text_edit_focused());
+            // a hovering Pencil or trackpad pointer, and the Pencil's double tap
+            ios_pencil::input(raw);
+            if ios_pencil::taken_tap() {
+                self.app.pencil_tap(_ctx);
+            }
         }
         #[cfg(target_os = "android")]
         {
@@ -379,6 +386,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             if let Ok(h) = raw_window_handle::HasWindowHandle::window_handle(_cc) {
                 ios_scene::set_window(h.as_raw());
                 ios_keys::install(h.as_raw(), &_cc.egui_ctx);
+                ios_pencil::install(h.as_raw(), &_cc.egui_ctx);
             }
             #[cfg(target_os = "android")]
             {

@@ -549,6 +549,19 @@ impl LightcraftApp {
         }
     }
 
+    /// A double tap on an Apple Pencil (the shells call this when the system's preferred action is
+    /// to switch to the eraser): while painting a mask, the brush switches between Add and Erase.
+    /// Returns whether it did anything.
+    pub fn pencil_tap(&mut self, ctx: &egui::Context) -> bool {
+        if self.ui.tool != "brush" {
+            return false;
+        }
+        self.ui.brush_erase = !self.ui.brush_erase;
+        let mode = if self.ui.brush_erase { "Brush: Erase" } else { "Brush: Add" };
+        self.toast(ctx, i18n::tr(mode));
+        true
+    }
+
     pub fn toast(&mut self, ctx: &egui::Context, text: impl Into<String>) {
         self.toast_for(ctx, text, TOAST_SECONDS);
     }

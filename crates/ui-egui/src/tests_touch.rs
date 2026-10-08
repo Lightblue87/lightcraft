@@ -339,3 +339,52 @@ fn the_export_dialog_fits_an_ipad_mini_in_landscape() {
     assert!(rect.top() >= 0.0 && rect.bottom() <= 744.0, "the whole dialog is on screen (it scrolls inside): {rect:?}");
 }
 
+#[test]
+fn pencil_pressure_sizes_the_brush_and_a_finger_paints_evenly() {
+    let mut h = detail("panel.masking");
+    let r = h.request("engine.execute", json!({"command": "tool.brush"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let img = h.app.image_rect.expect("image on screen");
+    let at = |x: f32| egui::pos2(img.left() + x * img.width(), img.center().y);
+    let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    let pen = |phase, pos, force| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(7), phase, pos, force: Some(force) };
+    let undo_before = h.app.session.undo.len();
+    // light, then firm
+    h.input([pen(egui::TouchPhase::Start, at(0.2), 0.1), egui::Event::PointerMoved(at(0.2)), button(at(0.2), true)]);
+    h.step();
+    for (i, f) in [0.1, 0.1, 0.1, 1.0, 1.0, 1.0].into_iter().enumerate() {
+        let q = at(0.25 + 0.05 * i as f32);
+        h.input([pen(egui::TouchPhase::Move, q, f), egui::Event::PointerMoved(q)]);
+        h.step();
+    }
+    let end = at(0.25 + 0.05 * 5.0);
+    h.input([pen(egui::TouchPhase::End, end, 1.0), button(end, false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+    let d = develop(&h);
+    let MaskShape::Brush { strokes } = &d.masks[0].components[0].shape else { panic!("a brush mask: {:?}", d.masks) };
+    assert!(strokes.len() >= 2, "light and firm parts: {strokes:?}");
+    assert!(strokes[0].size < strokes[strokes.len() - 1].size, "the firm part is wider: {strokes:?}");
+    assert_eq!(h.app.session.undo.len(), undo_before + 1, "one undo step for the stroke");
+    // a finger has no pressure: one stroke at the brush's size
+    touch(&mut h, at(0.2), &[at(0.3), at(0.4)]);
+    let d = develop(&h);
+    let MaskShape::Brush { strokes: after } = &d.masks[0].components[0].shape else { panic!() };
+    assert_eq!(after.len(), strokes.len() + 1);
+    assert!((after[after.len() - 1].size - h.app.ui.brush_size as f64).abs() < 1e-6, "{after:?}");
+    h.settle(SETTLE);
+}
+
+#[test]
+fn a_pencil_double_tap_swaps_the_brush_between_add_and_erase() {
+    let mut h = detail("panel.masking");
+    let ctx = h.view.ctx.clone();
+    assert!(!h.app.pencil_tap(&ctx), "nothing to switch without the brush");
+    let r = h.request("engine.execute", json!({"command": "tool.brush"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(!h.app.ui.brush_erase);
+    assert!(h.app.pencil_tap(&ctx));
+    assert!(h.app.ui.brush_erase, "erases");
+    assert!(h.app.pencil_tap(&ctx));
+    assert!(!h.app.ui.brush_erase, "and back");
+}

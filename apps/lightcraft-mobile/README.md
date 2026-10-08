@@ -102,7 +102,15 @@ browsers:
   with ⌘ as the command key (menus show ⌘), plus arrows, Escape and the single-key shortcuts.
   winit 0.30's iOS view only receives typed text, so while no text field has focus a hidden view
   of the shell (`src/ios_keys.rs`) is the first responder and turns `UIPress` key codes into egui
-  key events (`lightcraft_ui_egui::hid`). In a text field, keys go to the field as typed text.
+  key events (`lightcraft_ui_egui::hid`). In a text field another hidden view takes the keyboard:
+  it receives typed text (with the system's dead keys) and turns ⌘ / ⌃ combinations, arrows,
+  Escape and Tab into key events, so ⌘A, ⌘C, ⌘X, ⌘V, ⇧-arrows and ⌘Z work there too. Copying and
+  pasting go through the system pasteboard.
+- **Apple Pencil:** pressure sizes the mask brush (a light touch paints a quarter of the brush
+  size), a double tap swaps the brush between Add and Erase (when the system's double-tap setting
+  is "switch to eraser" or "previous tool"), and a Pencil hovering above the screen (or a trackpad
+  pointer) moves the pointer, so the brush outline and hover highlights show before touching
+  (`src/ios_pencil.rs`; winit 0.30 reports neither).
 - **Touch and pencil:** the canvas tools grab at the point a finger or pencil went down, handles
   reach at least 22 pt, a lifted finger still "clicks" menu items, and new linear / radial
   gradients are drawn by dragging on the photo.
@@ -162,9 +170,6 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
-- **In a text field, an iPad keyboard only types.** winit's view has the keyboard then, and it
-  takes typed text and ⌫ only: arrows, ⌘A / ⌘C / ⌘V and Escape do nothing there. Outside text
-  fields every key works (see Hardware keyboard).
 - **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
   dialogs (see below). There's no landscape-specific arrangement.
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
