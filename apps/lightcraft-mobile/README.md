@@ -29,6 +29,9 @@ If `cargo` on `PATH` isn't rustup's, set `CARGO` (for example
 - The grid, the loupe and every develop control work. A touch drag on a slider renders live.
 - GPU compute runs on Metal (iOS). Edits survive a hard kill, because the journal is fsynced
   per command.
+- The app icon is the desktop lynx, adapted for each system's mask: an iOS asset catalog with dark
+  and tinted versions (compiled by `actool`), and an Android adaptive icon with a themed
+  (monochrome) layer. Both are rendered by `packaging/icons.sh`; see `assets/app-icon/README.md`.
 
 ## Phone layout
 

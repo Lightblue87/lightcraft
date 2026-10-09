@@ -13,6 +13,12 @@ APP=$OUT/LightCraft.app
 rm -rf "$APP" && mkdir -p "$APP"
 cp "$OUT/lightcraft-ios" "$APP/"
 cp apps/lightcraft-mobile/ios/Info.plist "$APP/"
+# the app icon (assets/app-icon/ios, rendered by packaging/icons.sh): actool writes Assets.car and
+# the icon PNGs into the bundle, and the CFBundleIcons keys merged into Info.plist
+xcrun actool assets/app-icon/ios/Assets.xcassets --compile "$APP" --platform iphonesimulator \
+    --minimum-deployment-target 17.0 --target-device iphone --target-device ipad --app-icon AppIcon \
+    --output-partial-info-plist "$OUT/AppIcon.plist" --output-format human-readable-text --notices --warnings >/dev/null
+/usr/libexec/PlistBuddy -c "Merge $OUT/AppIcon.plist" "$APP/Info.plist" >/dev/null
 codesign -f -s - "$APP"
 DEVICE=${1:-booted}
 xcrun simctl install "$DEVICE" "$APP"

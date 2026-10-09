@@ -26,7 +26,10 @@ javac -source 8 -target 8 -Xlint:-options -bootclasspath "$PLATFORM/android.jar"
     $(find apps/lightcraft-mobile/android/java -name '*.java')
 "$BT/d8" --release --min-api $API --lib "$PLATFORM/android.jar" --output "$WORK/dex" $(find "$WORK/classes" -name '*.class')
 cp "$WORK/dex/classes.dex" "$WORK/stage/"
-"$BT/aapt2" link -o "$WORK/base.apk" --manifest apps/lightcraft-mobile/android/AndroidManifest.xml -I "$PLATFORM/android.jar"
+# the adaptive launcher icon (assets/app-icon/android/res, rendered by packaging/icons.sh)
+"$BT/aapt2" compile --dir assets/app-icon/android/res -o "$WORK/res.zip"
+"$BT/aapt2" link -o "$WORK/base.apk" --manifest apps/lightcraft-mobile/android/AndroidManifest.xml -I "$PLATFORM/android.jar" \
+    "$WORK/res.zip"
 (cd "$WORK/stage" && zip -q -0 -r ../base.apk lib classes.dex)
 "$BT/zipalign" -f -p 4 "$WORK/base.apk" "$WORK/aligned.apk"
 KS=$OUT/lightcraft-debug.keystore
