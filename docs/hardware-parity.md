@@ -1,10 +1,11 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (created from the code, gpu-pipeline.md and the parity checklist) · **Target:** Adobe Lightroom Classic 15.5 / Lightroom 9.6
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (iOS / Android shells: Apple Pencil pressure, touch screens) · **Target:** Adobe Lightroom Classic 15.5 / Lightroom 9.6
 
 What Lightroom does with the machine's hardware, per platform, and what LightCraft does. Sources:
 [gpu-pipeline.md](gpu-pipeline.md), [display-profiles.md](display-profiles.md), [denoise.md](denoise.md),
-[ai-masks.md](ai-masks.md), `crates/gpu`, `crates/engine/src/devices.rs`, `crates/ui-egui/src/panels/second.rs`.
+[ai-masks.md](ai-masks.md), `crates/gpu`, `crates/engine/src/devices.rs`, `crates/ui-egui/src/panels/second.rs`,
+[`apps/lightcraft-mobile`](../apps/lightcraft-mobile/README.md) (iOS / iPadOS and Android shells, built from source).
 
 | Feature | Target | LightCraft: macOS | Windows | Linux / BSD | Web | Status |
 |---|---|---|---|---|---|---|
@@ -14,7 +15,8 @@ What Lightroom does with the machine's hardware, per platform, and what LightCra
 | HDR (EDR) display | ✅ (macOS EDR, Windows HDR) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ (LR-VIEW-HDR-DISPLAY) |
 | Monitor profile | automatic per display, follows the window | 🟡 picked by hand | 🟡 | 🟡 | — | 🟡 OS profile not read; no follow across monitors |
 | Second window / second monitor | ✅ (Classic) | ✅ (⌘F11) | ✅ | ✅ | — | ✅ (Classic secondary-window keys missing) |
-| Pen pressure / tilt (brush masks) | ✅ pressure for size / flow | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| Pen pressure / tilt (brush masks) | ✅ pressure for size / flow | ⬜ | ⬜ | ⬜ | ⬜ | 🟡 Apple Pencil pressure sizes the brush and a double tap swaps Add / Erase on iPad (`ios_pencil.rs`); no desktop tablets, no tilt |
+| Touch screens (phones, tablets) | Lightroom mobile apps | — | — | — | — | 🟡 iOS / iPadOS and Android: compact phone layout, finger-sized controls, swipe, touch scrolling, soft keyboards, iPad keyboard and trackpad (`apps/lightcraft-mobile`); not packaged or released |
 | Trackpad gestures | pinch zoom, pan | ✅ pinch, two-finger pan | 🟡 (winit) | 🟡 | 🟡 | ✅ on macOS |
 | Card readers / cameras as import sources | ✅ (devices panel, eject after import) | ✅ mounted volumes with DCIM | ✅ | ✅ | — | 🟡 no eject-after-import check, no MTP / PTP phones |
 | Tethered capture | ✅ Classic (Canon, Nikon, Sony, Leica) | ⬜ | ⬜ | ⬜ | — | ⬜ |
@@ -36,7 +38,7 @@ correctness is proven on Apple GPUs; other vendors rely on user reports.
 |---|---:|---|
 | HDR display (EDR on macOS, Windows HDR, Linux where possible) | 10–20 | an HDR display to verify (human) |
 | OS monitor profile, follow window across displays | 5–10 | multi-monitor setup |
-| Pen pressure for brush masks (winit tablet events or a pure-Rust tablet layer) | 6–12 | a tablet |
+| Pen pressure for brush masks on desktop tablets (winit tablet events or a pure-Rust tablet layer; iPad Pencil done) | 6–12 | a tablet |
 | Remaining stages on GPU (defringe, spot removal, masks) | 10–20 | |
 | Tethered capture (PTP over USB in pure Rust, Canon / Nikon / Sony first) | 25–45 | cameras (human) |
 | Printing with colour management | 15–25 | printers (human) |
