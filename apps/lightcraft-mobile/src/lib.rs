@@ -66,6 +66,10 @@ struct App {
     /// slides out after the last frame, and nothing else would draw one.
     #[cfg(target_os = "android")]
     insets_settle: f64,
+    /// The activity-stack row of picked files being copied in, its ✕'s flag, and whether the
+    /// activity was told to stop (see [`App::copy_row`]).
+    #[cfg(target_os = "android")]
+    copy_row: Option<(lightcraft_engine::activity::TaskGuard, std::sync::Arc<std::sync::atomic::AtomicBool>, bool)>,
 }
 
 impl App {
@@ -87,6 +91,8 @@ impl App {
             numeric_focus: None,
             #[cfg(target_os = "android")]
             insets_settle: f64::NEG_INFINITY,
+            #[cfg(target_os = "android")]
+            copy_row: None,
         }
     }
 
@@ -111,6 +117,38 @@ impl App {
     /// the keyboard in the bottom inset, the layout (bottom bar, edit sheet, dialogs) sits above
     /// it. Polled a few times a second, more often while a text field has focus, since nothing
     /// signals a change.
+    /// Picked files being copied into the app (the photo picker's, a folder's): a row in the
+    /// activity stack with the count and the file, whose ✕ stops the copy after the current file
+    /// (what was copied is imported).
+    #[cfg(target_os = "android")]
+    fn copy_row(&mut self, ctx: &egui::Context) {
+        use std::sync::atomic::Ordering;
+        let picking = PICKING.load(Ordering::Relaxed) || DOC_PICKING.load(Ordering::Relaxed);
+        let progress = if picking { ANDROID_APP.get().and_then(android_jni::copy_progress) } else { None };
+        let Some((done, total, name)) = progress else {
+            self.copy_row = None;
+            return;
+        };
+        if self.copy_row.is_none() {
+            let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let row = self.app.session.activity.start("import", "Copying picked files", lightcraft_engine::activity::Cancel::Flag(flag.clone()));
+            self.copy_row = Some((row, flag, false));
+        }
+        if let Some((row, flag, stopped)) = self.copy_row.as_mut() {
+            if total > 0 {
+                row.progress(done, total);
+            }
+            row.detail(&name);
+            if flag.load(Ordering::Relaxed) && !*stopped {
+                *stopped = true;
+                if let Some(app) = ANDROID_APP.get() {
+                    android_jni::cancel_copy(app);
+                }
+            }
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
+
     #[cfg(target_os = "android")]
     fn window_insets(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         let now = raw.time.unwrap_or_default();
@@ -236,6 +274,10 @@ fn drag_value_text(ctx: &egui::Context, id: egui::Id, value: f64) -> Option<Stri
 #[cfg(target_os = "android")]
 static PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// A document pick (a command's file or folder dialog) is under way: its files are copied in.
+#[cfg(target_os = "android")]
+static DOC_PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The activity, for its window insets and the photo picker (set once by `android_main`).
 #[cfg(target_os = "android")]
 static ANDROID_APP: std::sync::OnceLock<winit::platform::android::activity::AndroidApp> = std::sync::OnceLock::new();
@@ -264,6 +306,8 @@ impl eframe::App for App {
                 log::warn!("import: {e}");
             }
         }
+        #[cfg(target_os = "android")]
+        self.copy_row(ctx);
         memory::poll(&mut self.app.session);
         self.app.logic(ctx);
     }
@@ -412,6 +456,7 @@ fn pick(req: lightcraft_ui_egui::pick::PickRequest, saves: &std::path::Path) -> 
             let mut exts: Vec<&str> = lightcraft_engine::import::EXTENSIONS.to_vec();
             exts.push("xmp");
             android_jni::pick_documents(&app, kind, &dir.to_string_lossy(), &exts)?;
+            DOC_PICKING.store(true, std::sync::atomic::Ordering::Relaxed);
             // nothing calls back into Rust with the answer: poll for it off the UI thread
             std::thread::Builder::new()
                 .name("document-picker".into())
@@ -419,6 +464,7 @@ fn pick(req: lightcraft_ui_egui::pick::PickRequest, saves: &std::path::Path) -> 
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(150));
                         if let Some(paths) = android_jni::take_documents(&app) {
+                            DOC_PICKING.store(false, std::sync::atomic::Ordering::Relaxed);
                             let _ = tx.send(settle_picked(paths));
                             if let Some(ctx) = android_jni::woken() {
                                 ctx.request_repaint();

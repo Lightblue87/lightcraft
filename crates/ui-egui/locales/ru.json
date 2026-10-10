@@ -2348,5 +2348,6 @@
   "Rules": "Условия",
   "Save as Set…": "Сохранить как набор…",
   "Saving metadata to an XMP sidecar another application wrote no longer replaces it (issue #92): LightCraft merges its": "Сохранение метаданных в XMP-файл, записанный другим приложением, больше не заменяет его (проблема #92): LightCraft добавляет свои",
-  "Scan failed": "Сбой сканирования"
+  "Scan failed": "Сбой сканирования",
+  "Copying picked files": "Копирование выбранных файлов"
 }

@@ -31,6 +31,11 @@ import java.util.List;
  * that open files or a folder (Import from Folder…, Import Presets…, a GPS track log…): chosen
  * files are copied into a folder the shell names, and a chosen folder's photos (the tree under it)
  * into a folder of that name inside it. Android hands over {@code content://} URIs, not paths.
+ *
+ * <p>While picked files are being copied in, {@link #copiedFiles}, {@link #filesToCopy} and
+ * {@link #copyName} say how
+ * far it is (the shell shows it in the activity stack) and {@link #cancelCopy} stops it after the
+ * file being copied: what was copied so far is delivered.
  */
 public class LightCraftActivity extends NativeActivity {
     private static final int PICK = 0x4c43;
@@ -44,6 +49,12 @@ public class LightCraftActivity extends NativeActivity {
     private final Object lock = new Object();
     private final List<String[]> ready = new ArrayList<>();
     private String dir;
+    /** Copies under way (a photo pick and a document pick may overlap), files done and expected. */
+    private final java.util.concurrent.atomic.AtomicInteger copying = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger copyDone = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger copyTotal = new java.util.concurrent.atomic.AtomicInteger();
+    private volatile String copyName = "";
+    private volatile boolean copyCancel;
 
     // (anonymous classes, not lambdas: android.jar has no LambdaMetafactory.metafactory for javac)
 
@@ -247,6 +258,45 @@ public class LightCraftActivity extends NativeActivity {
         return level;
     }
 
+    /** How many copies of picked files are under way. */
+    public int copiesRunning() {
+        return copying.get();
+    }
+
+    /** Files copied so far. */
+    public int copiedFiles() {
+        return copyDone.get();
+    }
+
+    /** Files to copy (0: not known yet, a folder being walked). */
+    public int filesToCopy() {
+        return copyTotal.get();
+    }
+
+    /** The file being copied in. */
+    public String copyName() {
+        return copyName;
+    }
+
+    /** Stop copying after the current file (the activity stack's ✕). */
+    public void cancelCopy() {
+        copyCancel = true;
+    }
+
+    /** A copy of {@code files} files (0: not known) starts. */
+    private void copyStarted(int files) {
+        if (copying.getAndIncrement() == 0) {
+            copyCancel = false;
+            copyDone.set(0);
+            copyTotal.set(0);
+        }
+        copyTotal.addAndGet(files);
+    }
+
+    private void copyEnded() {
+        copying.decrementAndGet();
+    }
+
     /** The paths of one finished selection (empty when cancelled), or null; oldest first. */
     public String[] takePicked() {
         synchronized (lock) {
@@ -279,12 +329,22 @@ public class LightCraftActivity extends NativeActivity {
             @Override
             public void run() {
             List<String> paths = new ArrayList<>();
-            for (Uri uri : picked) {
-                try {
-                    paths.add(copy(uri, target));
-                } catch (Exception e) {
-                    android.util.Log.w("LightCraft", "copying " + uri + ": " + e);
+            copyStarted(picked.size());
+            try {
+                for (Uri uri : picked) {
+                    if (copyCancel) {
+                        android.util.Log.i("LightCraft", "copy stopped after " + paths.size() + " of " + picked.size() + " photos");
+                        break;
+                    }
+                    try {
+                        paths.add(copy(uri, target));
+                    } catch (Exception e) {
+                        android.util.Log.w("LightCraft", "copying " + uri + ": " + e);
+                    }
+                    copyDone.incrementAndGet();
                 }
+            } finally {
+                copyEnded();
             }
             finished(paths);
             }
@@ -307,7 +367,10 @@ public class LightCraftActivity extends NativeActivity {
             @Override
             public void run() {
                 List<String> paths = new ArrayList<>();
+                // a folder's file count isn't known until it has been walked
+                copyStarted(request == TREE ? 0 : uris.size());
                 for (Uri uri : uris) {
+                    if (copyCancel) break;
                     try {
                         if (request == TREE) {
                             String root = DocumentsContract.getTreeDocumentId(uri);
@@ -318,11 +381,13 @@ public class LightCraftActivity extends NativeActivity {
                             paths.add(out.getAbsolutePath());
                         } else {
                             paths.add(copyDocument(uri, new File(target)));
+                            copyDone.incrementAndGet();
                         }
                     } catch (Exception e) {
                         android.util.Log.w("LightCraft", "copying " + uri + ": " + e);
                     }
                 }
+                copyEnded();
                 synchronized (lock) {
                     documents.add(paths.toArray(new String[0]));
                 }
@@ -359,14 +424,13 @@ public class LightCraftActivity extends NativeActivity {
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
                     copyTree(tree, id, new File(out, name), exts, depth + 1);
                 } else if (wanted(name, exts)) {
+                    if (copyCancel) return;
                     out.mkdirs();
                     File file = new File(out, name);
                     if (file.exists()) continue;
-                    try (InputStream in = getContentResolver().openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, id));
-                         OutputStream os = new FileOutputStream(file)) {
-                        byte[] buf = new byte[1 << 16];
-                        for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
-                    }
+                    copyName = name;
+                    write(DocumentsContract.buildDocumentUriUsingTree(tree, id), file);
+                    copyDone.incrementAndGet();
                 }
             }
         }
@@ -390,12 +454,23 @@ public class LightCraftActivity extends NativeActivity {
     /** Copy one picked document into {@code out} under its own name; its path. */
     private String copyDocument(Uri uri, File out) throws Exception {
         out.mkdirs();
-        File file = free(out, safeName(displayName(uri)));
+        String name = safeName(displayName(uri));
+        copyName = name;
+        File file = free(out, name);
+        write(uri, file);
+        return file.getAbsolutePath();
+    }
+
+    /** Copy {@code uri} into {@code file}; a copy cut short (an error) leaves nothing behind. */
+    private void write(Uri uri, File file) throws Exception {
         try (InputStream in = getContentResolver().openInputStream(uri); OutputStream os = new FileOutputStream(file)) {
+            if (in == null) throw new java.io.IOException("can't be opened");
             byte[] buf = new byte[1 << 16];
             for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
+        } catch (Exception e) {
+            file.delete();
+            throw e;
         }
-        return file.getAbsolutePath();
     }
 
     private void finished(List<String> paths) {
@@ -408,6 +483,7 @@ public class LightCraftActivity extends NativeActivity {
         File out = new File(target);
         out.mkdirs();
         String name = displayName(uri);
+        copyName = name;
         String type = getContentResolver().getType(uri);
         boolean heif = type != null && (type.equals("image/heic") || type.equals("image/heif"));
         if (heif) name = name.replaceAll("\\.(?i)(heic|heif)$", "") + ".jpg";
@@ -416,12 +492,12 @@ public class LightCraftActivity extends NativeActivity {
             Bitmap bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), uri));
             try (OutputStream os = new FileOutputStream(file)) {
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 95, os);
+            } catch (Exception e) {
+                file.delete();
+                throw e;
             }
         } else {
-            try (InputStream in = getContentResolver().openInputStream(uri); OutputStream os = new FileOutputStream(file)) {
-                byte[] buf = new byte[1 << 16];
-                for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
-            }
+            write(uri, file);
         }
         return file.getAbsolutePath();
     }

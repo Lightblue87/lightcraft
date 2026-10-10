@@ -140,6 +140,38 @@ pub fn share(app: &AndroidApp, paths: &[String]) {
     }
 }
 
+/// How far the copy of picked files is, while one runs: files copied, files to copy (0: not known
+/// yet), and the file being copied.
+pub fn copy_progress(app: &AndroidApp) -> Option<(u64, u64, String)> {
+    let r = with_activity(app, |env, activity| {
+        let int = |env: &mut jni::Env, name| env.call_method(activity, name, jni_sig!("()I"), &[])?.i();
+        if int(env, jni_str!("copiesRunning"))? <= 0 {
+            return Ok(None);
+        }
+        let done = int(env, jni_str!("copiedFiles"))?;
+        let total = int(env, jni_str!("filesToCopy"))?;
+        let name = env.call_method(activity, jni_str!("copyName"), jni_sig!("()Ljava/lang/String;"), &[])?.l()?;
+        let name = if name.is_null() {
+            String::new()
+        } else {
+            // SAFETY: copyName returns a String
+            unsafe { JString::from_raw(env, name.into_raw()) }.try_to_string(env)?
+        };
+        Ok(Some((u64::try_from(done).unwrap_or(0), u64::try_from(total).unwrap_or(0), name)))
+    });
+    r.unwrap_or_else(|e| {
+        log::warn!("copy progress: {e}");
+        None
+    })
+}
+
+/// Stop copying picked files after the current one.
+pub fn cancel_copy(app: &AndroidApp) {
+    if let Err(e) = with_activity(app, |env, activity| env.call_method(activity, jni_str!("cancelCopy"), jni_sig!("()V"), &[]).map(drop)) {
+        log::warn!("cancel copy: {e}");
+    }
+}
+
 /// The strongest `onTrimMemory` level since the last call (0: none).
 pub fn take_trim_level(app: &AndroidApp) -> i32 {
     with_activity(app, |env, activity| env.call_method(activity, jni_str!("takeTrimLevel"), jni_sig!("()I"), &[])?.i()).unwrap_or(0)

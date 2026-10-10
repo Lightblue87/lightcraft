@@ -76,6 +76,10 @@ orientation, iPad Split View and phone browsers:
   `Originals/`. Android's picker hands over a content URI, not a path, so the Java side copies
   the folder's photos and sidecars (subfolders too) into `<library>/Picked/<folder>`, and the
   review adds them where they are.
+- **Copying shows in the activity stack (Android):** while picked photos, files or a folder are
+  copied in, a "Copying picked files" row shows how many are done and the file being copied; its
+  ✕ stops after that file, and what was copied goes on to the import review. A file whose copy
+  fails leaves nothing behind.
 - **Other file dialogs:** every command that opens a file shows the system's document picker,
   filtered to the file types it takes: Import Profiles & Presets…, Import Keywords…, Import
   Point Curve Presets…, Auto-Tag from Tracklog…, Locate…, Find Missing Photos…, Import
