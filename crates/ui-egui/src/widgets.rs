@@ -38,6 +38,14 @@ pub fn grab_radius(ctx: &egui::Context, mouse: f32) -> f32 {
     if ctx.input(|i| i.has_touch_screen()) { mouse.max(22.0) } else { mouse }
 }
 
+/// What a photo, album or keyword in a scrolling list senses: clicks and drags (drag and drop)
+/// with a mouse or trackpad. On a touch screen clicks only: egui gives a drag to the widget under
+/// the finger, so a list item that took drags would never let a finger scroll its list. A long
+/// press opens the item's context menu there (egui counts it as a secondary click).
+pub fn list_item_sense(ctx: &egui::Context) -> egui::Sense {
+    if ctx.input(|i| i.has_touch_screen()) { egui::Sense::click() } else { egui::Sense::click_and_drag() }
+}
+
 /// Where the drag that `resp` reports as started was pressed. By then the pointer has moved past
 /// the drag threshold (by touch often well past it, one event can be a long way), so hit tests
 /// and stroke starts use this, not the current position.

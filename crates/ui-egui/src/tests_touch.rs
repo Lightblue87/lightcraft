@@ -456,3 +456,42 @@ fn a_menu_taller_than_the_screen_scrolls_to_its_last_item() {
     h.step();
     assert_ne!(h.app.ui.filter_bar, before, "and it works");
 }
+
+/// A finger dragged up the photo grid scrolls it, even when it lands on a photo: on a touch
+/// screen the photos don't take the drag (that would drag them to an album), so the grid gets it;
+/// a long press opens the photo's menu instead (Add to Album …).
+#[test]
+fn a_touch_drag_on_a_grid_photo_scrolls_the_grid() {
+    let services = Services { png: None, ..Default::default() };
+    let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    app.ui.view = crate::state::ViewMode::PhotoGrid;
+    let mut h = Headless::new(app, [1194.0, 834.0], 1.0);
+    // the mobile shell announces the touch screen before the first touch
+    h.input([egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId(0),
+        phase: egui::TouchPhase::Cancel,
+        pos: egui::Pos2::ZERO,
+        force: None,
+    }]);
+    h.settle(SETTLE);
+    let first = h.app.widgets.iter().find(|(w, _)| w.starts_with("thumb:")).map(|(_, r)| *r).expect("a photo in the grid");
+    let before = h.app.grid_scroll.unwrap_or_default();
+    let from = first.center() + egui::vec2(0.0, 300.0).min(egui::vec2(0.0, 834.0 - first.center().y - 60.0));
+    let t = |phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos, force: None };
+    let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    h.input([t(egui::TouchPhase::Start, from), egui::Event::PointerMoved(from), button(from, true)]);
+    h.step();
+    let mut p = from;
+    for _ in 0..10 {
+        p -= egui::vec2(0.0, 25.0);
+        h.input([t(egui::TouchPhase::Move, p), egui::Event::PointerMoved(p)]);
+        h.step();
+        assert!(h.app.ui.dragging_photos.is_none(), "the finger doesn't drag the photos");
+    }
+    h.input([t(egui::TouchPhase::End, p), button(p, false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+    let after = h.app.grid_scroll.unwrap_or_default();
+    assert!(after >= before + 150.0, "the grid scrolled with the finger: {before} → {after}");
+}

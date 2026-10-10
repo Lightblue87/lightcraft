@@ -160,7 +160,7 @@ fn drop_keyword(app: &mut LightcraftApp, ctx: &egui::Context, keyword: &str, par
 /// `can_fold`: the triangle opens and closes the level (not while a filter opens it).
 fn row(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Row, selection: &[PhotoId], ticks: &Ticks, can_fold: bool) {
     let t = Tokens::get(ui.ctx());
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), crate::widgets::list_item_sense(ui.ctx()));
     register(ui.ctx(), format!("keywordRow:{}", r.path), rect);
     if resp.drag_started() {
         app.ui.dragging_keyword = Some(r.path.clone());
@@ -203,7 +203,7 @@ fn row(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Row, selection: &[PhotoId
     let boxr = Rect::from_center_size(pos2(x + 22.0, cy), vec2(13.0, 13.0));
     let on = !selection.is_empty();
     // (it senses drags too, so a press there that moves doesn't pick the keyword up)
-    let sense = if on { Sense::click_and_drag() } else { Sense::hover() };
+    let sense = if on { crate::widgets::list_item_sense(ui.ctx()) } else { Sense::hover() };
     let tb = ui.interact(boxr.expand(3.0), egui::Id::new(("keyword-list-tick", r.path.to_lowercase())), sense);
     register(ui.ctx(), format!("keywordCheck:{}", r.path), boxr);
     let edge = if on { t.text_label } else { t.text_dim.gamma_multiply(0.5) };
