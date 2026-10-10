@@ -61,6 +61,11 @@ browsers:
   subclass of NativeActivity (`android/java/…/LightCraftActivity.java`), compiled by
   `scripts/android-apk.sh` with `javac` and `d8`, because NativeActivity can't receive an
   activity result.
+- **Import from a folder (iOS):** File ▸ Import from Folder… opens the Files app's folder picker
+  (iCloud Drive, On My iPad, a USB drive or a file server; `src/ios_folder.rs`). The import
+  review opens on Copy: a folder outside the app's sandbox is readable only while iOS grants
+  access (until the app quits), so the library keeps copies in `Originals/`. Not on Android
+  yet (its folder picker hands over a content URI, not a path).
 - **Surviving a reinstall (iOS):** iOS gives a reinstalled or updated app a new container
   path, but the catalog stores absolute paths. When the library opens, the engine relinks
   photos that were inside the library at its old location (such as `Picked/` copies) to the

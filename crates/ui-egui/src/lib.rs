@@ -188,6 +188,10 @@ pub struct Services {
     /// Offer the files of a finished export from the Export dialog (or Export with Preset /
     /// Previous) in the platform's share sheet (mobile hosts).
     pub share: Option<ShareFn>,
+    /// Import from Folder… starts on Copy (mobile hosts: a folder picked outside the app's own
+    /// storage can be read only while the system allows, so files added in place would go
+    /// missing).
+    pub import_copies: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

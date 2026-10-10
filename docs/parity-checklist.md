@@ -489,7 +489,7 @@ visible menu bar yet: the menu model is only exposed through the control channel
 | MENU-APP-HIDE | Hide / hide others / show all | P1 | ✅ | `apps/lightcraft/src/native_menu.rs` | the system's own items in the app menu (⌘H, ⌥⌘H) |
 | MENU-APP-QUIT | Quit | P0 | ✅ | `cmd:app.quit`, `apps/lightcraft/src/native_menu.rs` | macOS: app menu (native); elsewhere: File → Quit LightCraft, always the last item in its own group (after commands the File layout does not list) |
 | MENU-FILE-ADDPHOTOS | Import Photos… (was Add Photos…) | P0 | ✅ | `cmd:file.addPhotos`, `crates/ui-egui/src/menus.rs` | first item of File, ⇧⌘I; file picker → the import review |
-| MENU-FILE-ADDFOLDER | Import from Folder… (was Add Folder…) | P0 | ✅ | `cmd:file.addFolder`, `cmd:library.importPreview` | folder picker (desktop) → the import review, subfolders included; `path` param for agents. Worded as importing: it doesn't save a Local location (that is Local → Browse Folder…) |
+| MENU-FILE-ADDFOLDER | Import from Folder… (was Add Folder…) | P0 | ✅ | `cmd:file.addFolder`, `cmd:library.importPreview` | folder picker (desktop; iOS: the Files app's folder picker, the review starting on Copy) → the import review, subfolders included; `path` param for agents. Worded as importing: it doesn't save a Local location (that is Local → Browse Folder…) |
 | MENU-FILE-MIGRATE | Migrate photos | OOS | 🚫 | | |
 | MENU-FILE-NEWALBUM | New Album… | P0 | ✅ | `cmd:dialog.newAlbum` | |
 | MENU-FILE-NEWFOLDER | New Folder… | P0 | ✅ | `cmd:dialog.newFolder` | ⇧⌘N |

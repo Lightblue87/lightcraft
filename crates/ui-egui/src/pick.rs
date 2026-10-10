@@ -269,6 +269,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The mobile shells have only the background picker (no synchronous folder dialog): Import
+    /// from Folder… is offered all the same, and with `import_copies` (a picked folder outside the
+    /// app's storage is readable only while the system allows) the review starts on Copy.
+    #[test]
+    fn a_picker_alone_offers_import_from_folder_which_copies_on_mobile() {
+        let dir = std::env::temp_dir().join(format!("lc-pick-mobile-{}", std::process::id()));
+        let _photo = photo_in(&dir);
+        let (mut h, asked) = app_with_picker();
+        assert!(h.app.services.pick_folder.is_none());
+        assert!(crate::menus::ui_enabled(&h.app, "file.addFolder"), "Import from Folder… with a picker alone");
+        assert!(!crate::menus::ui_enabled(&h.app, "app.openLibrary"), "opening another library still needs a folder dialog");
+        h.app.services.import_copies = true;
+        h.app.run("file.addFolder", json!({})).unwrap();
+        asked.lock().unwrap()[0].1.send(vec![dir.to_string_lossy().to_string()]).unwrap();
+        assert_eq!(import_sources(&mut h), Some(vec![dir.to_string_lossy().to_string()]));
+        let Some(Dialog::Import { opts }) = &h.app.ui.dialog else { panic!("no import review") };
+        assert!(opts.copy && !opts.move_files, "copied into the library by default");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn without_a_picker_the_synchronous_dialog_answers_at_once() {
         let dir = std::env::temp_dir().join(format!("lc-pick-sync-{}", std::process::id()));

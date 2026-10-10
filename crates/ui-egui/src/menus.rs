@@ -1327,10 +1327,16 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
                     Picked::Later | Picked::Unavailable => None,
                 },
             };
-            match path {
-                Some(path) => crate::import::open(app, vec![path]),
-                None => Ok(Value::Null),
+            let Some(path) = path else { return Some(Ok(Value::Null)) };
+            let r = crate::import::open(app, vec![path]);
+            // only the scan just started (an error means another scan is running)
+            if r.is_ok()
+                && app.services.import_copies
+                && let Some(t) = &mut app.scan
+            {
+                t.copy = true;
             }
+            r
         }
         "file.importPresets" => {
             let paths = match p.get("paths").and_then(Value::as_array) {
@@ -1620,7 +1626,9 @@ pub fn ui_enabled(app: &LightcraftApp, id: &str) -> bool {
         "file.exportCurvePresets" => !app.session.curve_presets.is_empty(),
         "view.compare" => app.session.catalog.len() > 1,
         "view.fullScreenPreview" | "view.infoOverlay" | "view.navigator" => app.session.active().is_some() || app.ui.fullscreen,
-        "app.openLibrary" | "file.addFolder" => app.services.pick_folder.is_some() && !crate::lightroom_import::is_running(app),
+        "app.openLibrary" => app.services.pick_folder.is_some() && !crate::lightroom_import::is_running(app),
+        // the mobile shells have only the background picker
+        "file.addFolder" => (app.services.pick_folder.is_some() || app.services.picker.is_some()) && !crate::lightroom_import::is_running(app),
         "file.backupLibrary" => app.services.backup_library.is_some(),
         "app.openLogFolder" => app.services.reveal.is_some() && app.services.log_file.is_some(),
         "file.restoreLibrary" => app.services.restore_library.is_some(),

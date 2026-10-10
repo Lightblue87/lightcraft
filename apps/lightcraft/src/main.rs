@@ -552,6 +552,7 @@ fn services(ctx: egui::Context, log_file: Option<&std::path::Path>) -> Services 
         // exports go to ~/Pictures/LightCraft Exports; no share sheet on the desktop
         export_dir: None,
         share: None,
+        import_copies: false,
     }
 }
 

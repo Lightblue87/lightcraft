@@ -235,6 +235,7 @@ fn services(originals: Originals, backend: Option<Backend>, files: Files, frozen
         // exports are downloads; the folder only names them
         export_dir: None,
         share: None,
+        import_copies: false,
     }
 }
 

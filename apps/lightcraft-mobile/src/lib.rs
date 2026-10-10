@@ -4,12 +4,15 @@
 //!
 //! The library lives in the app's sandbox: `Documents/LightCraft Library` on iOS (visible in the
 //! Files app), `<internal data>/LightCraft Library` on Android. A new library gets the demo photos.
-//! There are no pickers yet: every host service except export writing is `None`.
+//! Photos come in through the system photo picker; on iOS, File ▸ Import from Folder… picks a
+//! folder in the Files app's document picker.
 #![cfg(any(target_os = "ios", target_os = "android"))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_os = "android")]
 mod android_jni;
+#[cfg(target_os = "ios")]
+mod ios_folder;
 #[cfg(target_os = "ios")]
 mod ios_keys;
 #[cfg(target_os = "ios")]
@@ -334,6 +337,11 @@ fn services(export_dir: String) -> Services {
             }
             Vec::new()
         })),
+        // File ▸ Import from Folder…: the Files app's folder picker, answered later (iOS)
+        #[cfg(target_os = "ios")]
+        picker: Some(Box::new(ios_folder::pick)),
+        // a picked folder outside the sandbox is readable only for a while: the library copies it
+        import_copies: true,
         ..Default::default()
     }
 }
@@ -403,6 +411,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             #[cfg(target_os = "ios")]
             {
                 ios_scene::set_context(&_cc.egui_ctx);
+                ios_folder::init(_cc.egui_ctx.clone());
                 ios_picker::init(library_dir.join("Picked"), _cc.egui_ctx.clone());
             }
             let export_dir = library_dir.with_file_name("LightCraft Exports").to_string_lossy().to_string();
