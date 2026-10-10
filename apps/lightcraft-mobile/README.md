@@ -138,6 +138,12 @@ orientation, iPad Split View and phone browsers:
   is "switch to eraser" or "previous tool"), and a Pencil hovering above the screen (or a trackpad
   pointer) moves the pointer, so the brush outline and hover highlights show before touching
   (`src/ios_pencil.rs`; winit 0.30 reports neither).
+- **iPad trackpad and mouse:** a two-finger click or right click opens the context menu, two-finger
+  scrolls and wheels scroll, and a trackpad pinch zooms the loupe (`src/ios_pencil.rs`: winit
+  0.30 reports every click as a touch). `ios/Info.plist` sets
+  `UIApplicationSupportsIndirectInputEvents`, without which iPadOS turns trackpad clicks into
+  finger touches with no button. A mouse's right button on Android still acts as a tap: Android
+  hands input to winit directly, which drops the button.
 - **Touch and pencil:** the canvas tools grab at the point a finger or pencil went down, handles
   reach at least 22 pt, a lifted finger still "clicks" menu items, and new linear / radial
   gradients are drawn by dragging on the photo.

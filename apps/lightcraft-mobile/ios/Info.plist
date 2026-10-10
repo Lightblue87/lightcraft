@@ -20,6 +20,7 @@
 </dict>
 </dict>
 <key>UILaunchScreen</key><dict/>
+<key>UIApplicationSupportsIndirectInputEvents</key><true/>
 <key>UIFileSharingEnabled</key><true/>
 <key>LSSupportsOpeningDocumentsInPlace</key><true/>
 <key>MinimumOSVersion</key><string>17.0</string>
