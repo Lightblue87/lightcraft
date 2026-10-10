@@ -136,8 +136,8 @@ fn desktop_width_dialogs_keep_their_size() {
     open(&mut h, "app.settings");
     let r = dialog_rect(&h).expect("Settings");
     assert!(r.width() >= 560.0 && r.width() < 900.0, "Settings at its desktop width: {r:?}");
-    h.request("ui.dialog.cancel", json!({}), T);
-    h.step();
+    // (in a fresh session: dialogs share one window, which keeps the last one's width)
+    let mut h = demo([1400.0, 900.0], json!({"view": "detail"}));
     open(&mut h, "dialog.labelNames");
     let r = dialog_rect(&h).expect("label names");
     assert!(r.width() < 600.0, "an ordinary dialog stays compact on the desktop: {r:?}");

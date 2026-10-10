@@ -84,7 +84,7 @@ orientation, iPad Split View and phone browsers:
   Commands that save a file (Export Keywords…, Export Presets…, Contact Sheet PDF…) save it in
   the exports folder and open the share sheet with it (Save to Files, AirDrop, Drive …).
   Edit in External Editor offers its edit copy there too, to open in another app.
-- **Links and the network:** Help ▸ links, About and the model download pages open in the browser. The Android app asks for the network (`INTERNET`), which cloud sync and model downloads need.
+- **Links and the network:** Help ▸ links, About and the model download pages open in the browser. The Android app asks for the network (`INTERNET`), which face and AI model downloads need.
 - **Surviving a reinstall (iOS):** iOS gives a reinstalled or updated app a new container
   path, but the catalog stores absolute paths. When the library opens, the engine relinks
   photos that were inside the library at its old location (such as `Picked/` copies) to the

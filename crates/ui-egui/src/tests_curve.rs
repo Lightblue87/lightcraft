@@ -30,6 +30,17 @@ fn curve_open_sized(channel: &str, size: [f32; 2]) -> Headless {
     h.app.ui.curve_channel = channel.into();
     h.step();
     h.step();
+    // a short window: scroll the Edit panel until the whole graph is on screen
+    for _ in 0..40 {
+        let r = curve_rect(&mut h);
+        if r.bottom() <= size[1] - 8.0 {
+            break;
+        }
+        h.input([egui::Event::PointerMoved(egui::pos2(r.center().x, size[1] / 2.0))]);
+        let s = h.request("ui.scroll", json!({"dx": 0.0, "dy": -60.0}), T);
+        assert_eq!(s["ok"], true, "{s}");
+        h.step();
+    }
     h
 }
 

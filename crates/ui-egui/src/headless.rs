@@ -761,7 +761,6 @@ mod tests {
     /// settle would show a half-rendered UI.
     const SETTLE: Duration = Duration::from_secs(120);
 
-
     fn demo(size: [f32; 2]) -> Headless {
         let services = crate::Services { png: None, ..Default::default() };
         let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);

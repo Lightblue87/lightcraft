@@ -128,7 +128,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
     // it is given doesn't carry over to the other dialogs.
     let import = matches!(dlg, Dialog::Import { .. });
     let window_id = egui::Id::new(if import { "lightcraft-import-dialog" } else { "lightcraft-dialog" });
-    let window = egui::Window::new(crate::i18n::tr(&title)).id(window_id)
+    let window = egui::Window::new(crate::i18n::tr(&title))
+        .id(window_id)
         .collapsible(false)
         .resizable(import && !crate::panels::compact::is_compact(ctx))
         .frame(frame)
@@ -146,7 +147,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         let window = window.vscroll(false).constrain_to(area).max_size(area.size() - egui::vec2(32.0, 64.0));
         if crate::panels::compact::is_compact(ctx) { window.fixed_size(size) } else { window.default_size(size) }
     } else {
-        crate::panels::compact::dialog(ctx, window)
+        crate::panels::compact::dialog(ctx, window, &title)
     };
     let mut import_pressed = None;
     let shown = window
@@ -1035,6 +1036,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         None => {}
     }
     if let Some(w) = shown {
+        crate::panels::compact::dialog_shown(ctx, &title, w.response.rect);
         ctx.move_to_top(w.response.layer_id);
         crate::widgets::register(ctx, "dialog:window", w.response.rect);
     }
