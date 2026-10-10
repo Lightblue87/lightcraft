@@ -658,7 +658,7 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         };
         let _ = app.run("library.select", json!({"ids": [id.0], "mode": mode}));
     }
-    if resp.double_clicked() {
+    if crate::widgets::double_clicked(ui, &resp) {
         let _ = app.run("library.select", json!({"ids": [id.0]}));
         let _ = app.run("view.detail", json!({}));
     }

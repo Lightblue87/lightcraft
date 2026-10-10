@@ -26,7 +26,7 @@ use crate::{ControlRequest, LightcraftApp};
 /// Background behind the panels (eframe's default clear colour, made opaque).
 const CLEAR: Color32 = Color32::from_rgb(12, 12, 12);
 /// Simulated frame interval (deterministic animation time).
-const FRAME_DT: f64 = 1.0 / 60.0;
+pub(crate) const FRAME_DT: f64 = 1.0 / 60.0;
 
 /// Validate the scaled screenshot dimensions before layout or pixel allocation.
 pub fn viewport_pixels(size: [f32; 2], pixels_per_point: f32) -> Result<[usize; 2], String> {

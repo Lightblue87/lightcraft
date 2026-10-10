@@ -46,6 +46,35 @@ pub fn list_item_sense(ctx: &egui::Context) -> egui::Sense {
     if ctx.input(|i| i.has_touch_screen()) { egui::Sense::click() } else { egui::Sense::click_and_drag() }
 }
 
+/// Longest time between the two taps of a double tap (release to release, s).
+const DOUBLE_TAP: f64 = 0.5;
+
+/// Whether `resp` was double-clicked, or on a touch screen double-tapped: egui's double click
+/// wants both clicks within 6 points and 0.3 s, which a mouse makes but fingers seldom do (they
+/// land a few points apart, and tap slower). Two taps on the same widget within [`DOUBLE_TAP`]
+/// count, wherever on it they land.
+pub fn double_clicked(ui: &egui::Ui, resp: &egui::Response) -> bool {
+    if !ui.input(|i| i.has_touch_screen()) {
+        return resp.double_clicked();
+    }
+    if !resp.clicked() {
+        return false;
+    }
+    let key = egui::Id::new("lc-last-tap");
+    let now = ui.input(|i| i.time);
+    let last = ui.ctx().data(|d| d.get_temp::<(egui::Id, f64)>(key));
+    let double = last.is_some_and(|(id, at)| id == resp.id && now - at <= DOUBLE_TAP);
+    // a double tap's second tap doesn't start the next one
+    ui.ctx().data_mut(|d| {
+        if double {
+            d.remove::<(egui::Id, f64)>(key);
+        } else {
+            d.insert_temp(key, (resp.id, now));
+        }
+    });
+    double
+}
+
 /// Where the drag that `resp` reports as started was pressed. By then the pointer has moved past
 /// the drag threshold (by touch often well past it, one event can be a long way), so hit tests
 /// and stroke starts use this, not the current position.

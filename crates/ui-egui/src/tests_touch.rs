@@ -495,3 +495,58 @@ fn a_touch_drag_on_a_grid_photo_scrolls_the_grid() {
     let after = h.app.grid_scroll.unwrap_or_default();
     assert!(after >= before + 150.0, "the grid scrolled with the finger: {before} → {after}");
 }
+
+/// A tap in the grid: finger down and up where it landed, then the pointer leaves (a lifted
+/// finger), as the mobile shell reports it.
+fn tap(h: &mut Headless, at: egui::Pos2) {
+    let t = |phase| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos: at, force: None };
+    let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    h.input([t(egui::TouchPhase::Start), egui::Event::PointerMoved(at), button(true)]);
+    h.step();
+    h.input([t(egui::TouchPhase::End), button(false)]);
+    h.step();
+    h.input([egui::Event::PointerGone]);
+    h.step();
+}
+
+/// Frames for `secs` of headless time.
+fn wait(h: &mut Headless, secs: f64) {
+    for _ in 0..(secs / crate::headless::FRAME_DT).ceil() as usize {
+        h.step();
+    }
+}
+
+/// Two taps on a photo in the grid open it in Detail, as a double click does. Fingers land a few
+/// points apart and tap slower than a mouse double-clicks: the second tap counts when it lands on
+/// the same photo soon enough, wherever on it.
+#[test]
+fn a_double_tap_on_a_grid_photo_opens_it() {
+    let services = Services { png: None, ..Default::default() };
+    let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    app.ui.view = crate::state::ViewMode::PhotoGrid;
+    let mut h = Headless::new(app, [1194.0, 834.0], 1.0);
+    h.input([egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId(0),
+        phase: egui::TouchPhase::Cancel,
+        pos: egui::Pos2::ZERO,
+        force: None,
+    }]);
+    h.settle(SETTLE);
+    let (id, r) =
+        h.app.widgets.iter().find(|(w, r)| w.starts_with("thumb:") && r.top() > 120.0 && r.bottom() < 700.0).cloned().expect("a photo on screen");
+    let id: u64 = id.trim_start_matches("thumb:").parse().unwrap();
+    // too slow: two single taps
+    tap(&mut h, r.center());
+    wait(&mut h, 0.8);
+    tap(&mut h, r.center());
+    assert_eq!(h.app.ui.view, crate::state::ViewMode::PhotoGrid, "two slow taps only select");
+    assert_eq!(h.app.session.active().map(|p| p.0), Some(id));
+    wait(&mut h, 0.8);
+    tap(&mut h, r.center());
+    wait(&mut h, 0.2);
+    tap(&mut h, r.center() + egui::vec2(12.0, -8.0));
+    h.step();
+    assert_eq!(h.app.ui.view, crate::state::ViewMode::Detail, "the second tap opens it");
+    assert_eq!(h.app.session.active().map(|p| p.0), Some(id));
+}
