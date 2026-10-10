@@ -165,7 +165,7 @@ fn topbar(app: &mut LightcraftApp, ui: &mut egui::Ui) {
 /// The search field in `r` (same id and command as the desktop top bar's).
 fn search(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
-    let id = egui::Id::new("search-field");
+    let id = crate::text_field::id("field:search");
     if std::mem::take(&mut app.ui.focus_search) {
         ui.memory_mut(|m| m.request_focus(id));
     }
@@ -177,22 +177,21 @@ fn search(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
         Stroke::new(1.0, if focused { t.accent } else { t.field_border }),
         StrokeKind::Inside,
     );
-    register(ui.ctx(), "field:search", r);
     let inner = r.shrink2(vec2(10.0, 4.0));
     if app.ui.search.is_empty() && !focused {
         paint(ui.painter(), Rect::from_min_size(pos2(inner.left(), r.center().y - 8.0), vec2(16.0, 16.0)), Icon::Search, t.text_dim);
     }
     let text = Rect::from_min_max(pos2(inner.left() + 22.0, inner.top()), inner.max);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text).layout(egui::Layout::left_to_right(egui::Align::Center)));
-    let resp = child.add(
-        egui::TextEdit::singleline(&mut app.ui.search)
-            .id(id)
-            .frame(egui::Frame::NONE)
-            .hint_text(crate::i18n::tr("Search"))
-            .desired_width(text.width())
-            .font(t.font(14.0))
-            .text_color(t.text),
-    );
+    // (registered as `field:search` by the field itself, like the desktop's)
+    let resp = crate::text_field::TextField::singleline("field:search", &mut app.ui.search)
+        .frame(false)
+        .hint(crate::i18n::tr("Search"))
+        .width(text.width())
+        .font(t.font(14.0))
+        .text_color(t.text)
+        .show(&mut child)
+        .response;
     if resp.changed() {
         let q = app.ui.search.clone();
         let _ = app.run("library.filter", json!({"text": q}));

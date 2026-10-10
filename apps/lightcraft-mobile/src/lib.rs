@@ -10,6 +10,10 @@
 //! and offer it in the share sheet (see [`pick`]).
 #![cfg(any(target_os = "ios", target_os = "android"))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+// `unsafe` is confined to the platform modules (Objective-C / UIKit on iOS, JNI on Android: the
+// `ios_*` and `android_jni` modules, each with `#![allow(unsafe_code)]`); every block says why
+// it is sound
+#![deny(clippy::undocumented_unsafe_blocks)]
 
 #[cfg(target_os = "android")]
 mod android_jni;

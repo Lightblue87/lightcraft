@@ -22,6 +22,7 @@ pub fn share(paths: &[String]) {
     let sheet = unsafe { UIActivityViewController::initWithActivityItems_applicationActivities(UIActivityViewController::alloc(mtm), &items, None) };
     // iPad shows it as a popover, which needs an anchor (without one UIKit throws): the bottom
     // centre of the window, where the bottom bar is
+    // SAFETY: a property getter of UIViewController that returns a nullable popover controller
     let popover: Option<Retained<UIPopoverPresentationController>> = unsafe { msg_send![&*sheet, popoverPresentationController] };
     if let (Some(popover), Some(view)) = (popover, root.view()) {
         let b = view.bounds();

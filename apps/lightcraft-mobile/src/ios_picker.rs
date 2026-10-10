@@ -103,6 +103,7 @@ pub fn present() {
         c
     };
     let picker = PickerController::init_with_configuration(PickerController::alloc(mtm), &config);
+    // SAFETY: `init` on a freshly allocated instance of our own NSObject subclass, on the main thread
     let delegate: Retained<PickerDelegate> = unsafe { msg_send![PickerDelegate::alloc(mtm), init] };
     picker.set_delegate(Some(&delegate));
     DELEGATE.with_borrow_mut(|d| *d = Some(delegate));
