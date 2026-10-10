@@ -69,8 +69,13 @@ pub fn pick_photos(app: &AndroidApp, dir: &str) {
 
 /// The paths of one picked selection that has been copied in, if any.
 pub fn take_picked(app: &AndroidApp) -> Option<Vec<String>> {
+    take_strings(app, jni_str!("takePicked"))
+}
+
+/// The activity's `String[] method()`: null as `None`.
+fn take_strings(app: &AndroidApp, method: &jni::strings::JNIStr) -> Option<Vec<String>> {
     let r = with_activity(app, |env, activity| {
-        let paths = env.call_method(activity, jni_str!("takePicked"), jni_sig!("()[Ljava/lang/String;"), &[])?.l()?;
+        let paths = env.call_method(activity, method, jni_sig!("()[Ljava/lang/String;"), &[])?.l()?;
         if paths.is_null() {
             return Ok(None);
         }
@@ -84,9 +89,42 @@ pub fn take_picked(app: &AndroidApp) -> Option<Vec<String>> {
         Ok(Some(out))
     });
     r.unwrap_or_else(|e| {
-        log::warn!("photo picker: {e}");
+        log::warn!("picker: {e}");
         None
     })
+}
+
+/// Show the system's document picker (`kind`: 0 several files, 1 one file, 2 a folder). Files
+/// are copied into `dir`, a folder's files with one of `extensions` into `dir/<its name>`;
+/// [`take_documents`] has the answer.
+pub fn pick_documents(app: &AndroidApp, kind: i32, dir: &str, extensions: &[&str]) -> Result<(), String> {
+    with_activity(app, |env, activity| {
+        let dir = env.new_string(dir)?;
+        let exts = env.new_string(extensions.join(","))?;
+        env.call_method(
+            activity,
+            jni_str!("pickDocuments"),
+            jni_sig!("(ILjava/lang/String;Ljava/lang/String;)V"),
+            &[JValue::Int(kind), JValue::Object(&dir), JValue::Object(&exts)],
+        )?;
+        Ok(())
+    })
+    .map_err(|e| format!("document picker: {e}"))
+}
+
+/// The paths of one finished document pick (empty: cancelled), if any.
+pub fn take_documents(app: &AndroidApp) -> Option<Vec<String>> {
+    take_strings(app, jni_str!("takeDocuments"))
+}
+
+/// Open a web link in the browser.
+pub fn open_url(app: &AndroidApp, url: &str) -> Result<(), String> {
+    with_activity(app, |env, activity| {
+        let url = env.new_string(url)?;
+        env.call_method(activity, jni_str!("openUrl"), jni_sig!("(Ljava/lang/String;)V"), &[JValue::Object(&url)])?;
+        Ok(())
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// Offer `paths` (files under the app's data directory) in the system share sheet.
@@ -124,6 +162,11 @@ pub fn logcat(level: log::Level, text: &str) {
 
 /// Woken (repainted) when the soft keyboard queues edits; see [`register_wake`].
 static WAKE: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
+
+/// The context [`register_wake`] wakes, for other threads that have news for it.
+pub fn woken() -> Option<&'static egui::Context> {
+    WAKE.get()
+}
 
 /// `LightCraftActivity.nativeWake()`: the keyboard queued edits (any thread).
 extern "system" fn native_wake<'local>(_env: jni::EnvUnowned<'local>, _this: JObject<'local>) {

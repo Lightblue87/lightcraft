@@ -134,6 +134,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                             // an empty colour range; clicking the photo samples it
                             let _ = app.run("mask.add", json!({"kind": "colorRange"}));
                             app.ui.tool = "colorRange".into();
+                            app.ui.pick_adds = false;
                             app.toast(ui.ctx(), crate::i18n::tr("Click the photo to pick a colour · ⇧-click adds more"));
                         }
                         "object" => start_object(app, ui.ctx(), "new"),
@@ -254,9 +255,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             register(ui.ctx(), format!("maskName:{}", m.id), Rect::from_min_size(at, g.size()));
             ui.painter().galley(at, g, color);
             let resp = if elided { resp.on_hover_text(&m.name) } else { resp };
-            // show / hide on hover (and always while hidden)
+            // show / hide on hover (and always while hidden, or on a touch screen)
             // (the pointer test, not `hovered`: over the eye, the row itself no longer counts as hovered)
-            if ui.rect_contains_pointer(r) || !m.visible {
+            if ui.rect_contains_pointer(r) || !m.visible || crate::widgets::touch_screen(ui.ctx()) {
                 let er = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(22.0, 22.0));
                 register(ui.ctx(), format!("maskVisible:{}", m.id), er);
                 let eye = ui.interact(er, egui::Id::new(("maskVisible", m.id)), Sense::click());
@@ -273,7 +274,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             if resp.clicked() {
                 let _ = app.run("mask.select", json!({"id": m.id}));
             }
-            if resp.double_clicked() {
+            if crate::widgets::double_clicked(ui, &resp) {
                 app.ui.renaming_mask = Some((m.id, m.name.clone()));
             }
             resp.context_menu(|ui| mask_menu(app, ui, m.id, &m.name, m.visible, index, count));
@@ -340,7 +341,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 });
                 let resp = resp.inner;
                 register(ui.ctx(), format!("component:{i}"), resp.rect);
-                if resp.double_clicked() {
+                if crate::widgets::double_clicked(ui, &resp) {
                     app.ui.renaming_component = Some((m.id, i, label.clone()));
                 }
                 resp.context_menu(|ui| component_row_menu(app, ui, m.id, i, &label, m.components.len()));
@@ -584,6 +585,18 @@ fn range_controls(app: &mut LightcraftApp, ui: &mut egui::Ui, comp: usize, shape
             }
         }
         MaskShape::Object { edge, .. } | MaskShape::Prompt { edge, .. } => {
+            // a finger has no ⌥: taps with the Object tool leave things out while this is on
+            if matches!(shape, MaskShape::Object { .. }) && crate::widgets::touch_screen(ui.ctx()) {
+                ui.horizontal(|ui| {
+                    for (exclude, label) in [(false, "Include"), (true, "Leave Out")] {
+                        let on = app.ui.tool == "object" && app.ui.object_excludes == exclude;
+                        if text_button(ui, &format!("objectTap{}{comp}", if exclude { "Out" } else { "In" }), label, on).clicked() {
+                            app.ui.tool = "object".into();
+                            app.ui.object_excludes = exclude;
+                        }
+                    }
+                });
+            }
             // Edge: how crisp the selection's border is (−100 hard … 0 as computed … 100 soft)
             let spec = ControlSpec {
                 id: "edge",
@@ -615,11 +628,21 @@ fn range_controls(app: &mut LightcraftApp, ui: &mut egui::Ui, comp: usize, shape
                         .size(11.5),
                 );
                 let picking = app.ui.tool == "colorRange";
-                if text_button(ui, &format!("colorPick{comp}"), crate::i18n::tr("Pick"), picking)
+                if text_button(ui, &format!("colorPick{comp}"), crate::i18n::tr("Pick"), picking && !app.ui.pick_adds)
                     .on_hover_text(crate::i18n::tr("Click the photo to pick a colour; ⇧-click adds more (up to 5)"))
                     .clicked()
                 {
-                    app.ui.tool = if picking { String::new() } else { "colorRange".into() };
+                    app.ui.tool = if picking && !app.ui.pick_adds { String::new() } else { "colorRange".into() };
+                    app.ui.pick_adds = false;
+                }
+                // a finger has no ⇧: taps add samples while this is on
+                if crate::widgets::touch_screen(ui.ctx())
+                    && !samples.is_empty()
+                    && text_button(ui, &format!("colorAdd{comp}"), crate::i18n::tr("Add"), picking && app.ui.pick_adds).clicked()
+                {
+                    let adding = picking && app.ui.pick_adds;
+                    app.ui.tool = if adding { String::new() } else { "colorRange".into() };
+                    app.ui.pick_adds = !adding;
                 }
             });
             let spec = ControlSpec {
@@ -703,6 +726,7 @@ pub(crate) fn start_object(app: &mut LightcraftApp, ctx: &egui::Context, op: &st
     match r {
         Ok(_) => {
             app.ui.tool = "object".into();
+            app.ui.object_excludes = false;
             app.toast(ctx, crate::i18n::tr("Click the object to select it · ⌥-click leaves a part out"));
         }
         Err(e) => app.ai_error(ctx, e, Some(("object", op))),
@@ -720,6 +744,7 @@ pub(crate) fn begin_ai(app: &mut LightcraftApp, kind: &str, op: &str) -> Result<
                 app.run("mask.addComponent", json!({"op": op, "kind": "object"}))
             }?;
             app.ui.tool = "object".into();
+            app.ui.object_excludes = false;
             Ok(r)
         }
         _ => {

@@ -61,11 +61,22 @@ browsers:
   subclass of NativeActivity (`android/java/…/LightCraftActivity.java`), compiled by
   `scripts/android-apk.sh` with `javac` and `d8`, because NativeActivity can't receive an
   activity result.
-- **Import from a folder (iOS):** File ▸ Import from Folder… opens the Files app's folder picker
-  (iCloud Drive, On My iPad, a USB drive or a file server; `src/ios_folder.rs`). The import
-  review opens on Copy: a folder outside the app's sandbox is readable only while iOS grants
-  access (until the app quits), so the library keeps copies in `Originals/`. Not on Android
-  yet (its folder picker hands over a content URI, not a path).
+- **Import from a folder:** File ▸ Import from Folder… opens the system's folder picker. On iOS
+  that's the Files app's (iCloud Drive, On My iPad, a USB drive or a file server;
+  `src/ios_files.rs`), and the import review opens on Copy: a folder outside the app's sandbox
+  is readable only while iOS grants access (until the app quits), so the library keeps copies in
+  `Originals/`. Android's picker hands over a content URI, not a path, so the Java side copies
+  the folder's photos and sidecars (subfolders too) into `<library>/Picked/<folder>`, and the
+  review adds them where they are.
+- **Other file dialogs:** every command that opens a file shows the system's document picker,
+  filtered to the file types it takes: Import Profiles & Presets…, Import Keywords…, Import
+  Point Curve Presets…, Auto-Tag from Tracklog…, Locate…, Find Missing Photos…, Import
+  Lightroom Catalog…, a face model, an export watermark's graphic. Picked files arrive as
+  copies (iOS in `tmp/`, Android in the cache); photos among them move into `<library>/Picked`.
+  Commands that save a file (Export Keywords…, Export Presets…, Contact Sheet PDF…) save it in
+  the exports folder and open the share sheet with it (Save to Files, AirDrop, Drive …).
+  Edit in External Editor offers its edit copy there too, to open in another app.
+- **Links and the network:** Help ▸ links, About and the model download pages open in the browser. The Android app asks for the network (`INTERNET`), which cloud sync and model downloads need.
 - **Surviving a reinstall (iOS):** iOS gives a reinstalled or updated app a new container
   path, but the catalog stores absolute paths. When the library opens, the engine relinks
   photos that were inside the library at its old location (such as `Picked/` copies) to the
@@ -122,6 +133,31 @@ browsers:
 - **Touch and pencil:** the canvas tools grab at the point a finger or pencil went down, handles
   reach at least 22 pt, a lifted finger still "clicks" menu items, and new linear / radial
   gradients are drawn by dragging on the photo.
+- **What the desktop does with hover, modifiers, drags and keys** has a touch way in:
+  - **Selecting several photos:** Select in the bottom bar (or Edit ▸ Select Several, or
+    "Select Several" in a photo's long-press menu): taps add photos to the selection and take
+    them out, as ⌘-click does, with a tick on each; Done ends it.
+  - **Double taps** do what double clicks do (open a photo, reset a slider, delete a curve
+    point, reset a colour wheel, rename a mask or version …): two taps on the same control
+    within half a second, wherever on it they land.
+  - **Controls shown on hover** are always there on a touch screen: a section's on/off eye, a
+    mask's eye, face boxes' handles, × and "Add name", Survey's ×, a person's "More" tiles, the
+    Profile Browser's stars, the Keyword List's arrow.
+  - **Drag and drop:** a finger's drag scrolls, so albums and folders get Move Up / Move Down in
+    their long-press menu, and keywords get Move to ▸ (Top Level or inside another keyword).
+    Photos go into albums with Add to Album. A trackpad or mouse on an iPad still drags.
+  - **Full screen and slideshows** show Exit and Pause / Play (Esc, F and Space on a keyboard).
+  - **Compare:** View ▸ Previous / Next Candidate (← / →).
+  - **Masks:** Color Range's Add makes taps add samples (⇧-click); the Object tool's Include /
+    Leave Out (⌥-click).
+  - **Phone grid:** pinch to show more or fewer photos across (the desktop's size slider), and
+    Info, Keywords, Versions and History open in the bottom sheet over the grid.
+- **Testing:** the desktop's control channel (`docs/control-protocol.md`) can be turned on: set
+  `LIGHTCRAFT_CONTROL_PORT` on iOS (`SIMCTL_CHILD_LIGHTCRAFT_CONTROL_PORT=18310 xcrun simctl
+  launch …`; the Simulator shares the Mac's loopback), or write the port to
+  `/data/local/tmp/lc_control` on Android and `adb forward tcp:PORT tcp:PORT`. Then
+  `lightcraft-cli run --connect 127.0.0.1:PORT …` drives the app. Nothing a user launches
+  turns it on.
 - **Soft keyboard:** the layout moves up above the keyboard (bottom bar, sheet, dialogs), and a
   focused text field it would cover is scrolled into view. On iOS the shell's scene delegate
   reads the keyboard frame from UIKit. On Android the shell compares the decor view's
@@ -186,8 +222,12 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   verified with Korean on Gboard. English on the emulator's Gboard commits letter by letter (as it
   does in a stock `EditText` there), so English autocorrect and swipe typing are still
   unverified, and Japanese/Chinese keyboards weren't tried.
-- **Touch.** Some controls appear only on hover, and the desktop layout's hit targets are
-  small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
+- **Touch.** The desktop layout's hit targets are small (an iPad's), and hover previews of
+  presets and profiles have no touch equivalent (their thumbnails show the look). Without a
+  hardware keyboard, a few things stay out of reach: the smart-album rule editor's ⌥-click
+  (insert a group after a rule), a radial mask's ⌥ (resize evenly), and the click-zoom ratio
+  (pinch zooms instead). Open Library…, Browse Folder… and Move Folder To… need a folder the
+  app may keep, which the mobile sandboxes don't offer. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
 - **Some full-size exports still come out smaller on phones.** A whole-image render peaks near

@@ -53,6 +53,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                     ui.add_space(10.0);
                     let sort = icon_button(ui, "sort", Icon::Sort, vec2(30.0, 30.0), false, true, "Sort");
                     egui::Popup::menu(&sort).show(|ui| sort_menu(app, ui));
+                    select_mode_button(app, ui);
                 })
                 .response
                 .rect
@@ -60,6 +61,19 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let right_start = right_side(app, ui, full, left_end + 12.0);
             centre(app, ui, full, left_end + 12.0, right_start - 12.0);
         });
+}
+
+/// On a touch screen in the grid: Select (Edit ▸ Select Several: taps add and remove photos, as
+/// ⌘-clicks do), Done while it's on.
+pub fn select_mode_button(app: &mut LightcraftApp, ui: &mut egui::Ui) {
+    if !crate::widgets::touch_screen(ui.ctx()) || !matches!(app.ui.view, ViewMode::PhotoGrid | ViewMode::SquareGrid) {
+        return;
+    }
+    ui.add_space(6.0);
+    let on = app.ui.select_mode;
+    if crate::widgets::text_button(ui, "selectMode", if on { "Done" } else { "Select" }, on).clicked() {
+        let _ = app.run("view.selectMode", json!({}));
+    }
 }
 
 /// Below this width the view-mode buttons collapse into one (they and the zoom group need ~420).

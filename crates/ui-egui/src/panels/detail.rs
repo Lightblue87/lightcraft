@@ -826,6 +826,10 @@ fn region_overlay(
     let t = Tokens::get(p.ctx());
     let clip = p.clip_rect();
     let pointer = ui.input(|i| i.pointer.hover_pos());
+    // a finger can't hover: every box shows its handles, its × and its "Add name" invitation, and
+    // the handles and × are bigger
+    let touch = crate::widgets::touch_screen(ui.ctx());
+    let (handle, x_size) = if touch { (28.0, 24.0) } else { (14.0, 16.0) };
     // the box being dragged: (region index, its box so far)
     let drag_key = egui::Id::new("region-drag");
     let live: Option<(usize, lightcraft_geom::Rect)> = ui.data(|d| d.get_temp(drag_key));
@@ -837,10 +841,10 @@ fn region_overlay(
         // white with a black keyline just outside it, so the box shows on any background
         p.rect_stroke(rect.expand(1.0), 0.0, Stroke::new(1.0, Color32::from_black_alpha(190)), StrokeKind::Outside);
         p.rect_stroke(rect, 0.0, Stroke::new(1.0, Color32::WHITE), StrokeKind::Outside);
-        if dragging.is_some() || (live.is_none() && pointer.is_some_and(|h| rect.expand(8.0).contains(h))) {
+        if dragging.is_some() || (live.is_none() && (touch || pointer.is_some_and(|h| rect.expand(8.0).contains(h)))) {
             for (h, (fx, fy, cursor)) in REGION_HANDLES.iter().enumerate() {
                 let c = pos2(rect.left() + fx * rect.width(), rect.top() + fy * rect.height());
-                let resp = ui.interact(Rect::from_center_size(c, vec2(14.0, 14.0)), egui::Id::new(("region-handle", index, h)), Sense::drag());
+                let resp = ui.interact(Rect::from_center_size(c, vec2(handle, handle)), egui::Id::new(("region-handle", index, h)), Sense::drag());
                 if resp.hovered() || resp.dragged() {
                     ui.ctx().set_cursor_icon(*cursor);
                 }
@@ -882,8 +886,8 @@ fn region_overlay(
                 }
             }
         }
-        if dragging.is_none() && live.is_none() && pointer.is_some_and(|h| rect.expand(3.0).contains(h)) {
-            let xr = Rect::from_center_size(pos2(rect.right() - 13.0, rect.top() + 13.0), vec2(16.0, 16.0));
+        if dragging.is_none() && live.is_none() && (touch || pointer.is_some_and(|h| rect.expand(3.0).contains(h))) {
+            let xr = Rect::from_center_size(pos2(rect.right() - 5.0 - x_size / 2.0, rect.top() + 5.0 + x_size / 2.0), vec2(x_size, x_size));
             let resp = ui.interact(xr, egui::Id::new(("region-x", index)), Sense::click());
             register(ui.ctx(), format!("regionRemove:{index}"), xr);
             let fill = Color32::from_black_alpha(if resp.hovered() { 235 } else { 190 });
@@ -900,7 +904,7 @@ fn region_overlay(
         // what the label says: the name, a guess to confirm ("Jane Doe?"), or on hover an invitation to name the face
         let is_face = r.kind == lightcraft_meta::RegionKind::Face;
         let hint = hints.and_then(|h| h.by_index.get(&index));
-        let hovered = pointer.is_some_and(|h| rect.expand(3.0).contains(h));
+        let hovered = touch || pointer.is_some_and(|h| rect.expand(3.0).contains(h));
         let editing_this = editing.as_ref().is_some_and(|e| e.photo == photo.id.0 && e.index == index);
         let (text, text_color, fill_alpha, invitation) = match (&r.name, hint.and_then(|h| h.suggestion.as_ref())) {
             (Some(n), _) => (n.clone(), Color32::from_gray(225), 235, false),
@@ -1182,7 +1186,7 @@ fn general_interaction(
             && let Some(q) = resp.interact_pointer_pos()
         {
             let n = map.norm(q);
-            let add = ui.input(|i| i.modifiers.shift);
+            let add = ui.input(|i| i.modifiers.shift) || app.ui.pick_adds;
             if let Err(e) = app.run("mask.sampleColor", json!({"x": n.x, "y": n.y, "add": add})) {
                 app.toast(ui.ctx(), e);
             }
@@ -1365,7 +1369,7 @@ fn crop_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
     let readout_at = pointer.filter(|_| rotating);
     let mut shown_angle = d.crop.geometry.angle;
     // double-click inside the crop box applies the crop (same as Return / Done)
-    if resp.double_clicked()
+    if crate::widgets::double_clicked(ui, resp)
         && let Some(q) = resp.interact_pointer_pos()
         && inside(q)
         && grab(q).is_none()
@@ -1764,7 +1768,7 @@ fn mask_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
             && let Some(q) = resp.interact_pointer_pos()
         {
             let n = map.norm(q);
-            let exclude = ui.input(|i| i.modifiers.alt);
+            let exclude = ui.input(|i| i.modifiers.alt) || app.ui.object_excludes;
             match app.run("mask.objectPoint", json!({"x": n.x, "y": n.y, "exclude": exclude})) {
                 Ok(_) => {
                     if let Some(mid) = app.session.active_mask {
@@ -2200,7 +2204,7 @@ pub(crate) fn filmstrip(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
             }
             if resp.clicked() {
                 let m = ui.input(|i| i.modifiers);
-                let mode = if m.command {
+                let mode = if m.command || app.ui.select_mode {
                     "toggle"
                 } else if m.shift {
                     "range"
@@ -2273,7 +2277,7 @@ mod preview_geometry_tests {
 /// `held`: drawn with ⌘ held in the crop tool, which stays active afterwards.
 fn straighten_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Response, held: bool) {
     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-    if !held && resp.double_clicked() {
+    if !held && crate::widgets::double_clicked(ui, resp) {
         let _ = app.run("crop.autoStraighten", json!({}));
         app.ui.tool.clear();
         app.gesture = None;

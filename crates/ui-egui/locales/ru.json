@@ -1595,6 +1595,16 @@
   "Downloading model": "Загрузка модели",
   "Finding faces": "Поиск лиц",
   "Quit Anyway": "Всё равно выйти",
+  "Select Several": "Выбрать несколько",
+  "Tap photos to add them to the selection or take them out": "Касайтесь фото, чтобы добавить их в выбор или убрать из него",
+  "Play": "Воспроизвести",
+  "Slideshow · Pause and Exit are at the top right": "Слайд-шоу · «Приостановить» и «Выход» — справа вверху",
+  "Inside This Keyword": "Внутрь этого ключевого слова",
+  "Previous Candidate": "Предыдущий кандидат",
+  "Next Candidate": "Следующий кандидат",
+  "Include": "Включить",
+  "Leave Out": "Исключить",
+  "Import photos with Menu → File → Import Photos… or Import from Folder…": "Импортируйте фото через Меню → Файл → Импорт фото… или Импорт из папки…",
   "Synchronizing folder": "Синхронизация папки",
   "Looking for changes": "Поиск изменений"
 }

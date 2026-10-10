@@ -4,15 +4,17 @@
 //!
 //! The library lives in the app's sandbox: `Documents/LightCraft Library` on iOS (visible in the
 //! Files app), `<internal data>/LightCraft Library` on Android. A new library gets the demo photos.
-//! Photos come in through the system photo picker; on iOS, File ▸ Import from Folder… picks a
-//! folder in the Files app's document picker.
+//! Photos come in through the system photo picker. The commands that open other files or a folder
+//! (Import from Folder…, Import Presets…, a GPS track log …) show the system's document picker,
+//! and those that save a file (Export Keywords…, a contact sheet …) save it in the exports folder
+//! and offer it in the share sheet (see [`pick`]).
 #![cfg(any(target_os = "ios", target_os = "android"))]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_os = "android")]
 mod android_jni;
 #[cfg(target_os = "ios")]
-mod ios_folder;
+mod ios_files;
 #[cfg(target_os = "ios")]
 mod ios_keys;
 #[cfg(target_os = "ios")]
@@ -24,6 +26,10 @@ mod ios_scene;
 #[cfg(target_os = "ios")]
 mod ios_share;
 mod memory;
+// the desktop's loopback control channel, for driving the app from tests (see `control_port`)
+#[path = "../../lightcraft/src/control_server.rs"]
+#[allow(dead_code)] // the desktop's constants for its own tests
+mod control_server;
 
 use lightcraft_engine::Session;
 use lightcraft_ui_egui::{LightcraftApp, Services};
@@ -305,6 +311,7 @@ impl eframe::App for App {
 /// `export_dir`: where exports go by default (next to the library, inside the sandbox; on iOS
 /// `Documents/`, so they show in the Files app too).
 fn services(export_dir: String) -> Services {
+    let saves = std::path::PathBuf::from(&export_dir);
     Services {
         export_dir: Some(export_dir),
         // a finished export opens the share sheet (AirDrop, Messages, Save to Photos, other apps)
@@ -337,13 +344,132 @@ fn services(export_dir: String) -> Services {
             }
             Vec::new()
         })),
-        // File ▸ Import from Folder…: the Files app's folder picker, answered later (iOS)
+        // the commands' file dialogs: the system's document picker, answered later
+        picker: Some(Box::new(move |req| pick(req, &saves))),
+        // iOS: a picked folder outside the sandbox is readable only for a while, so the library
+        // copies it; Android's picker copies a folder into the library already
+        import_copies: cfg!(target_os = "ios"),
         #[cfg(target_os = "ios")]
-        picker: Some(Box::new(ios_folder::pick)),
-        // a picked folder outside the sandbox is readable only for a while: the library copies it
-        import_copies: true,
+        open_url: Some(Box::new(|url: &str| https(url).and_then(ios_files::open_url))),
+        #[cfg(target_os = "android")]
+        open_url: Some(Box::new(|url: &str| {
+            let app = ANDROID_APP.get().ok_or("no activity")?;
+            https(url).and_then(|url| android_jni::open_url(app, url))
+        })),
         ..Default::default()
     }
+}
+
+/// Only web links are opened (as on the desktop).
+fn https(url: &str) -> Result<&str, String> {
+    if url.starts_with("https://") { Ok(url) } else { Err("only https links are opened".into()) }
+}
+
+/// Where picked photos are kept: `<library>/Picked`, with the photo picker's (set once at start).
+static PICKED_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// The commands' file dialogs (`lightcraft_ui_egui::pick`). A save is answered at once with a free
+/// name in `saves` (the exports folder), and the UI offers the saved file in the share sheet
+/// (Save to Files, AirDrop, other apps); there's no save dialog to show first. File ▸ Import
+/// Photos… keeps the photo library's picker (the synchronous `pick_files`). The rest shows the
+/// system's document picker.
+fn pick(req: lightcraft_ui_egui::pick::PickRequest, saves: &std::path::Path) -> Result<std::sync::mpsc::Receiver<Vec<String>>, String> {
+    use lightcraft_ui_egui::pick::PickKind;
+    let (tx, rx) = std::sync::mpsc::channel();
+    match req.kind {
+        PickKind::Save => {
+            let name = req.file_name.as_deref().map(file_name).unwrap_or_else(|| "Untitled".into());
+            std::fs::create_dir_all(saves).map_err(|e| format!("can't create {}: {e}", saves.display()))?;
+            let _ = tx.send(vec![free_path(saves, &name).to_string_lossy().to_string()]);
+            Ok(rx)
+        }
+        PickKind::Files if req.filter.as_ref().is_some_and(|f| f.1 == lightcraft_engine::import::EXTENSIONS) => {
+            Err("photos come from the photo library".into())
+        }
+        #[cfg(target_os = "ios")]
+        _ => ios_files::pick(&req),
+        #[cfg(target_os = "android")]
+        _ => {
+            let app = ANDROID_APP.get().ok_or("no activity")?.clone();
+            let kind = match req.kind {
+                PickKind::Files => 0,
+                PickKind::File => 1,
+                _ => 2,
+            };
+            // files in the app's cache (photos among them move into the library); a folder's
+            // photos and sidecars straight into the library, where they're added in place
+            let dir = if kind == 2 {
+                PICKED_DIR.get().cloned().unwrap_or_default()
+            } else {
+                // the activity's cacheDir, beside its filesDir
+                let files = app.internal_data_path().unwrap_or_default();
+                files.parent().unwrap_or(&files).join("cache").join("picked")
+            };
+            let mut exts: Vec<&str> = lightcraft_engine::import::EXTENSIONS.to_vec();
+            exts.push("xmp");
+            android_jni::pick_documents(&app, kind, &dir.to_string_lossy(), &exts)?;
+            // nothing calls back into Rust with the answer: poll for it off the UI thread
+            std::thread::Builder::new()
+                .name("document-picker".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        if let Some(paths) = android_jni::take_documents(&app) {
+                            let _ = tx.send(settle_picked(paths));
+                            if let Some(ctx) = android_jni::woken() {
+                                ctx.request_repaint();
+                            }
+                            return;
+                        }
+                    }
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(rx)
+        }
+    }
+}
+
+/// `name` without directories (a suggested file name, e.g. a preset group's).
+fn file_name(name: &str) -> String {
+    let n: String = name.chars().map(|c| if matches!(c, '/' | '\\' | ':') { '_' } else { c }).collect();
+    if n.trim().is_empty() || n == "." || n == ".." { "Untitled".into() } else { n }
+}
+
+/// `dir/name`, numbered ("name 2.ext") when taken.
+fn free_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let p = std::path::Path::new(name);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (2..10_000).map(|n| dir.join(format!("{stem} {n}{ext}"))).find(|p| !p.exists()).unwrap_or(first)
+}
+
+/// Picked files are copies in the app's temporary storage, which the system may clear: photos
+/// among them (a missing photo located, a watermark graphic) move into `<library>/Picked`, like
+/// the photo picker's. The rest (presets, keyword lists, track logs) is read once.
+pub(crate) fn settle_picked(paths: Vec<String>) -> Vec<String> {
+    let Some(dir) = PICKED_DIR.get() else { return paths };
+    paths
+        .into_iter()
+        .map(|p| {
+            let path = std::path::Path::new(&p);
+            let photo = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .is_some_and(|e| lightcraft_engine::import::EXTENSIONS.contains(&e.as_str()));
+            if !photo || !path.is_file() || path.starts_with(dir) {
+                return p;
+            }
+            let Some(name) = path.file_name() else { return p };
+            let to = free_path(dir, &name.to_string_lossy());
+            let moved =
+                std::fs::create_dir_all(dir).and_then(|()| std::fs::rename(path, &to).or_else(|_| std::fs::copy(path, &to).map(|_| ()))).is_ok();
+            if moved { to.to_string_lossy().to_string() } else { p }
+        })
+        .collect()
 }
 
 /// Logs to stderr on iOS (Xcode / `simctl launch --console-pty`), to logcat on Android (tag
@@ -411,10 +537,11 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             #[cfg(target_os = "ios")]
             {
                 ios_scene::set_context(&_cc.egui_ctx);
-                ios_folder::init(_cc.egui_ctx.clone());
+                ios_files::init(_cc.egui_ctx.clone());
                 ios_picker::init(library_dir.join("Picked"), _cc.egui_ctx.clone());
             }
             let export_dir = library_dir.with_file_name("LightCraft Exports").to_string_lossy().to_string();
+            let _ = PICKED_DIR.set(library_dir.join("Picked"));
             let mut s = Session::new().with_fs().with_system_clock();
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {
@@ -425,9 +552,25 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
                 Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
             }
             memory::configure(&mut s, &_cc.egui_ctx);
-            Ok(Box::new(App::new(LightcraftApp::new(s, services(export_dir)))))
+            let mut app = LightcraftApp::new(s, services(export_dir));
+            if let Some(port) = control_port() {
+                app = app.with_control(control_server::start(port, _cc.egui_ctx.clone()));
+            }
+            Ok(Box::new(App::new(app)))
         }),
     )
+}
+
+/// The control channel's port (`docs/control-protocol.md`), for driving the app from a test
+/// script: `LIGHTCRAFT_CONTROL_PORT` on iOS (the Simulator passes `SIMCTL_CHILD_…` variables on;
+/// it shares the Mac's loopback), the contents of `/data/local/tmp/lc_control` on Android (then
+/// `adb forward tcp:PORT tcp:PORT`). Off unless asked for: nothing a user launches sets either.
+fn control_port() -> Option<u16> {
+    #[cfg(target_os = "android")]
+    let v = std::fs::read_to_string("/data/local/tmp/lc_control").ok();
+    #[cfg(not(target_os = "android"))]
+    let v = std::env::var("LIGHTCRAFT_CONTROL_PORT").ok();
+    v.and_then(|v| v.trim().parse().ok())
 }
 
 /// iOS: `$HOME` is the app container; `Documents/` shows up in the Files app.

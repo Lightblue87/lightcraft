@@ -1141,6 +1141,20 @@ fn folder_menu(app: &mut LightcraftApp, resp: &egui::Response, a: &Album) {
                 }
             }
         });
+        // by hand without dragging (touch screens): one place up or down among its own kind
+        let kind: Vec<AlbumId> = app.session.catalog.album_children(a.parent).iter().filter(|s| s.folder == a.folder).map(|s| s.id).collect();
+        if let Some(at) = kind.iter().position(|&s| s == a.id) {
+            let r = ui.add_enabled(at > 0, egui::Button::new(crate::i18n::tr("Move Up")));
+            register(ui.ctx(), format!("albumUp:{}", a.id.0), r.rect);
+            if r.clicked() {
+                place_album(app, ui, a.id, a.parent, at.checked_sub(1).and_then(|i| kind.get(i)).copied());
+            }
+            let r = ui.add_enabled(at + 1 < kind.len(), egui::Button::new(crate::i18n::tr("Move Down")));
+            register(ui.ctx(), format!("albumDown:{}", a.id.0), r.rect);
+            if r.clicked() {
+                place_album(app, ui, a.id, a.parent, kind.get(at + 2).copied());
+            }
+        }
         if ui.button(crate::i18n::tr("Rename…")).clicked() {
             app.ui.dialog = Some(crate::state::Dialog::RenameAlbum { id: a.id.0, name: a.name.clone() });
         }

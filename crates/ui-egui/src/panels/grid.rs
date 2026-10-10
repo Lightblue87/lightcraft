@@ -193,15 +193,22 @@ fn show_inner(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         } else if app.session.source == lightcraft_engine::LibrarySource::Folder {
             super::empty_message(ui, ui.max_rect(), "No photos in this folder", "Turn on Include subfolders, or pick another folder under Local");
         } else {
-            super::empty_message(ui, ui.max_rect(), "No photos", "Import photos with File → Import Photos… (Cmd+Shift+I), or drop them here");
+            let how = if crate::widgets::touch_screen(ui.ctx()) {
+                "Import photos with Menu → File → Import Photos… or Import from Folder…"
+            } else {
+                "Import photos with File → Import Photos… (Cmd+Shift+I), or drop them here"
+            };
+            super::empty_message(ui, ui.max_rect(), "No photos", how);
         }
         return;
     }
     let ppp = ui.ctx().pixels_per_point();
     let square = app.ui.view == ViewMode::SquareGrid;
     let avail_w = ui.available_width() - 8.0;
-    // compact layout (no thumbnail-size slider there): about three across
-    let target = if super::compact::is_compact(ui.ctx()) { app.ui.thumb_size.min(avail_w / 3.2) } else { app.ui.thumb_size };
+    let compact = super::compact::is_compact(ui.ctx());
+    pinch_thumbnails(app, ui, compact);
+    // compact layout (no thumbnail-size slider there): so many across (three at first)
+    let target = if compact { avail_w / (app.ui.grid_columns as f32 + 0.2) } else { app.ui.thumb_size };
     let by = resolve_group(app.session.sort.group, target);
     let group_key = match app.session.source {
         lightcraft_engine::LibrarySource::RecentlyDeleted => None,
@@ -439,10 +446,40 @@ fn group_header(app: &mut LightcraftApp, ui: &mut egui::Ui, run: &DateRun, ids: 
     if resp.clicked() {
         let group: Vec<u64> = ids[run.start..(run.start + run.count).min(ids.len())].iter().map(|p| p.0).collect();
         let m = ui.input(|i| i.modifiers);
-        let mode = if m.command || m.shift { "add" } else { "replace" };
+        let mode = if m.command || m.shift || app.ui.select_mode { "add" } else { "replace" };
         let _ = app.run("library.select", json!({"ids": group, "mode": mode}));
     }
 }
+
+/// A two-finger pinch over the grid resizes the thumbnails, as the size slider does: in the
+/// compact layout one column fewer (pinching out) or more (in) per step, else continuously.
+fn pinch_thumbnails(app: &mut LightcraftApp, ui: &egui::Ui, compact: bool) {
+    let key = egui::Id::new("grid-pinch");
+    let zoom = ui.input(|i| i.multi_touch().map(|m| m.zoom_delta)).filter(|_| ui.rect_contains_pointer(ui.max_rect()));
+    let Some(zoom) = zoom else {
+        ui.data_mut(|d| d.remove_temp::<f32>(key));
+        return;
+    };
+    if !compact {
+        app.ui.thumb_size = (app.ui.thumb_size * zoom).clamp(90.0, 480.0);
+        return;
+    }
+    let so_far = ui.data(|d| d.get_temp::<f32>(key)).unwrap_or(1.0) * zoom;
+    let (min, max) = crate::state::GRID_COLUMNS;
+    let step = if so_far > PINCH_STEP {
+        app.ui.grid_columns = app.ui.grid_columns.saturating_sub(1).max(min);
+        true
+    } else if so_far < 1.0 / PINCH_STEP {
+        app.ui.grid_columns = app.ui.grid_columns.saturating_add(1).min(max);
+        true
+    } else {
+        false
+    };
+    ui.data_mut(|d| d.insert_temp(key, if step { 1.0 } else { so_far }));
+}
+
+/// How far a pinch goes (as a scale) before the compact grid changes by a column.
+const PINCH_STEP: f32 = 1.3;
 
 /// Request a grid/filmstrip thumbnail at `priority`. An unedited raw without a thumbnail texture
 /// first gets a stand-in (its cached thumbnail, else its embedded camera preview), and its real
@@ -536,6 +573,17 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         if app.renderer.failure(Slot::Thumb(id)).is_some() {
             // unreadable / missing file
             p.text(ph.center(), Align2::CENTER_CENTER, "!", t.semibold(18.0), t.text_dim);
+        }
+    }
+    // Select Several: a round tick on each photo, filled on the selected ones (as phones do)
+    if app.ui.select_mode {
+        let c = pos2(photo_rect.right() - 14.0, photo_rect.top() + 14.0);
+        p.circle_filled(c, 10.0, if selected { t.accent } else { Color32::from_black_alpha(90) });
+        p.circle_stroke(c, 10.0, Stroke::new(1.5, Color32::WHITE));
+        if selected {
+            let tick = [pos2(c.x - 4.5, c.y), pos2(c.x - 1.0, c.y + 3.5), pos2(c.x + 5.0, c.y - 3.5)];
+            p.line_segment([tick[0], tick[1]], Stroke::new(2.0, Color32::WHITE));
+            p.line_segment([tick[1], tick[2]], Stroke::new(2.0, Color32::WHITE));
         }
     }
     // labels and badges
@@ -651,14 +699,15 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         let m = ui.input(|i| i.modifiers);
         let mode = if m.shift {
             "range"
-        } else if m.command {
+        } else if m.command || app.ui.select_mode {
             "toggle"
         } else {
             "replace"
         };
         let _ = app.run("library.select", json!({"ids": [id.0], "mode": mode}));
     }
-    if crate::widgets::double_clicked(ui, &resp) {
+    // (in Select Several a quick second tap takes the photo out again rather than opening it)
+    if !app.ui.select_mode && crate::widgets::double_clicked(ui, &resp) {
         let _ = app.run("library.select", json!({"ids": [id.0]}));
         let _ = app.run("view.detail", json!({}));
     }
@@ -881,10 +930,15 @@ pub fn stack_badge(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, sid:
 
 pub fn context_menu(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     if !app.session.selection.contains(id) {
-        let _ = app.run("library.select", json!({"ids": [id.0]}));
+        let mode = if app.ui.select_mode { "add" } else { "replace" };
+        let _ = app.run("library.select", json!({"ids": [id.0], "mode": mode}));
     }
     if ui.button(crate::i18n::tr("Open in Detail")).clicked() {
         let _ = app.run("view.detail", json!({}));
+    }
+    // a finger has no ⌘ or ⇧ to click with: Select Several makes taps add and remove photos
+    if crate::widgets::touch_screen(ui.ctx()) && !app.ui.select_mode && ui.button(crate::i18n::tr("Select Several")).clicked() {
+        let _ = app.run("view.selectMode", json!({"on": true}));
     }
     if ui.button(crate::i18n::tr("Find Similar Photos")).clicked() {
         match app.run("library.findSimilar", json!({"id": id.0})) {

@@ -282,7 +282,7 @@ pub fn show_compare(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if resp.clicked() {
             select_pair(app, sel, cand, id);
         }
-        if resp.double_clicked() {
+        if crate::widgets::double_clicked(ui, &resp) {
             app.ui.zoom = if app.ui.zoom == Zoom::Fit { Zoom::Percent(100.0) } else { Zoom::Fit };
         }
         resp.context_menu(|ui| {
@@ -337,12 +337,12 @@ pub fn show_survey(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if resp.clicked() {
             app.session.selection.active = Some(*id);
         }
-        if resp.double_clicked() {
+        if crate::widgets::double_clicked(ui, &resp) {
             let _ = app.run("library.select", json!({"ids": [id.0]}));
             app.ui.view = ViewMode::Detail;
         }
-        // remove from the survey (deselect) on hover
-        if resp.hovered() && photos.len() > 1 {
+        // remove from the survey (deselect) on hover; always there on a touch screen
+        if (resp.hovered() || crate::widgets::touch_screen(ui.ctx())) && photos.len() > 1 {
             let xr = Rect::from_min_size(pos2(img.right() - 26.0, img.top() + 6.0), vec2(20.0, 20.0));
             let xresp = ui.interact(xr, egui::Id::new(("survey-x", id.0)), Sense::click()).on_hover_text(crate::i18n::tr("Remove from survey"));
             ui.painter().circle_filled(xr.center(), 10.0, Color32::from_black_alpha(if xresp.hovered() { 230 } else { 160 }));

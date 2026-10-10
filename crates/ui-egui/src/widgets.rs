@@ -38,12 +38,46 @@ pub fn grab_radius(ctx: &egui::Context, mouse: f32) -> f32 {
     if ctx.input(|i| i.has_touch_screen()) { mouse.max(22.0) } else { mouse }
 }
 
+/// Whether the screen can be touched: controls a mouse reveals by hovering (a section's eye, a
+/// tile's remove button) are always there, since a finger can't hover. An iPad with a trackpad
+/// counts too.
+pub fn touch_screen(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.has_touch_screen())
+}
+
+const FINGER: &str = "lc-pointer-is-finger";
+
+/// Each frame, before the UI: whether the pointer is a finger (or pencil) or a mouse / trackpad,
+/// from this frame's events. A touch screen with a trackpad (an iPad with a Magic Keyboard)
+/// reports both: touches as `Touch` events (with the pointer events egui makes of them), the
+/// trackpad as pointer events alone.
+pub fn note_pointer(ctx: &egui::Context) {
+    let finger = ctx.input(|i| {
+        if i.events.iter().any(|e| matches!(e, egui::Event::Touch { .. })) {
+            Some(true)
+        } else if i.events.iter().any(|e| matches!(e, egui::Event::PointerMoved(_) | egui::Event::PointerButton { .. })) {
+            Some(false)
+        } else {
+            None
+        }
+    });
+    if let Some(f) = finger {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new(FINGER), f));
+    }
+}
+
+/// Whether the pointer is a finger (or pencil) now ([`note_pointer`]); before any input, whether
+/// the screen can be touched.
+pub fn finger(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::new(FINGER))).unwrap_or_else(|| touch_screen(ctx))
+}
+
 /// What a photo, album or keyword in a scrolling list senses: clicks and drags (drag and drop)
-/// with a mouse or trackpad. On a touch screen clicks only: egui gives a drag to the widget under
-/// the finger, so a list item that took drags would never let a finger scroll its list. A long
-/// press opens the item's context menu there (egui counts it as a secondary click).
+/// with a mouse or trackpad, an iPad's included. With a finger clicks only: egui gives a drag to
+/// the widget under the finger, so a list item that took drags would never let a finger scroll its
+/// list. A long press opens the item's context menu there (egui counts it as a secondary click).
 pub fn list_item_sense(ctx: &egui::Context) -> egui::Sense {
-    if ctx.input(|i| i.has_touch_screen()) { egui::Sense::click() } else { egui::Sense::click_and_drag() }
+    if finger(ctx) { egui::Sense::click() } else { egui::Sense::click_and_drag() }
 }
 
 /// Longest time between the two taps of a double tap (release to release, s).
@@ -54,7 +88,7 @@ const DOUBLE_TAP: f64 = 0.5;
 /// land a few points apart, and tap slower). Two taps on the same widget within [`DOUBLE_TAP`]
 /// count, wherever on it they land.
 pub fn double_clicked(ui: &egui::Ui, resp: &egui::Response) -> bool {
-    if !ui.input(|i| i.has_touch_screen()) {
+    if !finger(ui.ctx()) {
         return resp.double_clicked();
     }
     if !resp.clicked() {
@@ -320,7 +354,7 @@ pub fn slider_padded(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool,
             let delta = ui.input(|i| i.pointer.delta());
             ui.scroll_with_delta_animation(vec2(0.0, delta.y), egui::style::ScrollAnimation::none());
         }
-    } else if resp.double_clicked() || label_resp.double_clicked() {
+    } else if double_clicked(ui, &resp) | double_clicked(ui, &label_resp) {
         out.reset = true;
         out.value = Some(spec.default);
         v = spec.default;
@@ -435,7 +469,7 @@ pub fn section_header(ui: &mut Ui, id: &str, title: &str, open: bool, enabled: O
     // pointer is over the eye itself (the eye is on top), which hid the eye before it could be
     // clicked (issue #316)
     if let Some(on) = enabled
-        && (ui.rect_contains_pointer(r) || !on)
+        && (ui.rect_contains_pointer(r) || !on || touch_screen(ui.ctx()))
     {
         let eye = Rect::from_center_size(pos2(r.right() - 34.0, r.center().y), vec2(18.0, 18.0));
         let er = ui.interact(eye, ui.id().with(("eye", id)), Sense::click());

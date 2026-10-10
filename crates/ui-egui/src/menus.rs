@@ -67,7 +67,11 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("photo.setReference", "Set as Reference Photo", None, ""),
     ("compare.swap", "Swap Compare Photos", None, "View"),
     ("compare.makeSelect", "Make Candidate the Select", None, "View"),
+    // ← / → in Compare; menu items for touch screens, which have no arrow keys
+    ("compare.previous", "Previous Candidate", None, "View"),
+    ("compare.next", "Next Candidate", None, "View"),
     ("view.autoAdvance", "Auto Advance", None, "Photo"),
+    ("view.selectMode", "Select Several", None, "Edit"),
     ("view.filmstrip", "Filmstrip", Some("/"), "View"),
     ("view.leftPanel", "My Photos Panel", Some("Cmd+Shift+L"), "View"),
     ("view.beforeAfter", "Compare Before and After", Some("Y"), "View"),
@@ -386,6 +390,16 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
         }
         "compare.swap" => crate::panels::compare::swap(app),
         "compare.makeSelect" => crate::panels::compare::make_select(app),
+        "compare.previous" => crate::panels::compare::compare_step(app, -1),
+        "compare.next" => crate::panels::compare::compare_step(app, 1),
+        "view.selectMode" => {
+            // {on?: bool}: toggles without
+            app.ui.select_mode = p.get("on").and_then(Value::as_bool).unwrap_or(!app.ui.select_mode);
+            if app.ui.select_mode {
+                app.toast(&ctx, crate::i18n::tr("Tap photos to add them to the selection or take them out"));
+            }
+            Ok(json!({"selectMode": app.ui.select_mode}))
+        }
         "view.autoAdvance" => {
             app.ui.auto_advance = !app.ui.auto_advance;
             app.toast(&ctx, if app.ui.auto_advance { "Auto Advance On" } else { "Auto Advance Off" });
@@ -435,7 +449,14 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             app.ui.zoom = Zoom::Fit;
             app.ui.tool.clear();
             let _ = app.session.end_interaction();
-            app.toast(&ctx, crate::i18n::tr("Slideshow · Space pauses · Esc ends"));
+            app.toast(
+                &ctx,
+                crate::i18n::tr(if crate::widgets::touch_screen(&ctx) {
+                    "Slideshow · Pause and Exit are at the top right"
+                } else {
+                    "Slideshow · Space pauses · Esc ends"
+                }),
+            );
             Ok(json!({"interval": interval}))
         }
         "view.fullScreenPreview" => {
@@ -1020,7 +1041,13 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
         "dialog.faceModel" => {
             let path = match p.get("path").and_then(Value::as_str) {
                 Some(x) => Some(x.to_string()),
-                None => app.services.pick_model_file.as_mut().and_then(|f| f().into_iter().next()),
+                None => {
+                    let req = PickRequest::file(crate::i18n::tr("Add a Face Recognition Model"), crate::i18n::tr("Face models (ONNX)"), &["onnx"]);
+                    match crate::pick::ask(app, id, p, "path", req, |s| s.pick_model_file.as_mut().map(|f| f())) {
+                        Picked::Now(paths) => paths.into_iter().next(),
+                        Picked::Later | Picked::Unavailable => None,
+                    }
+                }
             };
             match path {
                 Some(path) => crate::panels::faces::open_dialog(app, &path),
@@ -1048,10 +1075,13 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
                 app.ui.external_edits.push(id);
             }
             let editor = p.get("app").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| app.ui.settings.external_editor.clone());
-            if let Some(f) = app.services.open_with.as_mut()
-                && let Err(e) = f(&path, &editor)
-            {
-                app.toast(&ctx, crate::i18n::tr_format!("Couldn't open the editor: {e}", e = e));
+            if let Some(f) = app.services.open_with.as_mut() {
+                if let Err(e) = f(&path, &editor) {
+                    app.toast(&ctx, crate::i18n::tr_format!("Couldn't open the editor: {e}", e = e));
+                }
+            } else if let Some(share) = app.services.share.as_mut() {
+                // mobile: no editor to launch; the share sheet opens the copy in another app
+                share(std::slice::from_ref(&path));
             }
             let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             app.toast(&ctx, crate::i18n::tr_format!("{name} opened for editing; it is stacked with the original", name = name));
@@ -1611,7 +1641,7 @@ pub fn ui_enabled(app: &LightcraftApp, id: &str) -> bool {
         "app.export" | "dialog.export" | "dialog.createPreset" | "dialog.rename" | "dialog.captureTime" | "dialog.copySettings" => {
             app.session.active().is_some()
         }
-        "photo.tagFromTracklog" => app.session.active().is_some() && app.services.pick_tracklog.is_some(),
+        "photo.tagFromTracklog" => app.session.active().is_some() && (app.services.pick_tracklog.is_some() || app.services.picker.is_some()),
         "app.exportPrevious" => app.session.active().is_some() && app.session.last_export.is_some(),
         "dialog.pasteSettings" => app.session.active().is_some() && app.session.clipboard.is_some(),
         "app.showInFinder" => {
@@ -1632,7 +1662,7 @@ pub fn ui_enabled(app: &LightcraftApp, id: &str) -> bool {
         "file.backupLibrary" => app.services.backup_library.is_some(),
         "app.openLogFolder" => app.services.reveal.is_some() && app.services.log_file.is_some(),
         "file.restoreLibrary" => app.services.restore_library.is_some(),
-        "compare.swap" | "compare.makeSelect" => app.ui.view == ViewMode::Compare,
+        "compare.swap" | "compare.makeSelect" | "compare.previous" | "compare.next" => app.ui.view == ViewMode::Compare,
         s if s.starts_with("dialog.merge") || (s.starts_with("merge.") && s.ends_with("Last")) => {
             app.session.targets(&serde_json::json!({})).len() >= 2 && app.merge.final_task.is_none()
         }

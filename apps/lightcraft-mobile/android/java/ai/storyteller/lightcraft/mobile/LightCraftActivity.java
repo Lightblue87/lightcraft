@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.ImageDecoder;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.view.ViewGroup;
@@ -25,9 +26,21 @@ import java.util.List;
  * onActivityResult. The Rust shell calls {@link #pickPhotos} over JNI and polls
  * {@link #takePicked}; each chosen photo is copied into {@code dir} on a background thread first.
  * HEIC/HEIF (which LightCraft can't decode yet) is converted to JPEG.
+ *
+ * <p>The document picker ({@link #pickDocuments}, {@link #takeDocuments}) answers the commands
+ * that open files or a folder (Import from Folder…, Import Presets…, a GPS track log…): chosen
+ * files are copied into a folder the shell names, and a chosen folder's photos (the tree under it)
+ * into a folder of that name inside it. Android hands over {@code content://} URIs, not paths.
  */
 public class LightCraftActivity extends NativeActivity {
     private static final int PICK = 0x4c43;
+    private static final int DOCS = 0x4c44;
+    private static final int TREE = 0x4c45;
+    /** How deep a picked folder is copied (a cycle or a pathological tree stops there). */
+    private static final int MAX_DEPTH = 24;
+    private final List<String[]> documents = new ArrayList<>();
+    private String docsDir;
+    private String[] treeExtensions = new String[0];
     private final Object lock = new Object();
     private final List<String[]> ready = new ArrayList<>();
     private String dir;
@@ -51,6 +64,54 @@ public class LightCraftActivity extends NativeActivity {
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             }
             startActivityForResult(intent, PICK);
+            }
+        });
+    }
+
+    /**
+     * Show the system's document picker: {@code kind} 0 = several files, 1 = one file, 2 = a
+     * folder. Files are copied into {@code dir}; a folder's files with one of {@code extensions}
+     * (comma-separated, lower case) into {@code dir/<its name>}. {@link #takeDocuments} has the
+     * answer.
+     */
+    public void pickDocuments(final int kind, String dir, String extensions) {
+        this.docsDir = dir;
+        this.treeExtensions = extensions.isEmpty() ? new String[0] : extensions.split(",");
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Intent intent;
+                if (kind == 2) {
+                    intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    startActivityForResult(intent, TREE);
+                } else {
+                    intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("*/*");
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, kind == 0);
+                    startActivityForResult(intent, DOCS);
+                }
+            }
+        });
+    }
+
+    /** The paths of one finished document pick (empty when cancelled), or null; oldest first. */
+    public String[] takeDocuments() {
+        synchronized (lock) {
+            return documents.isEmpty() ? null : documents.remove(0);
+        }
+    }
+
+    /** Open a web link in the browser. */
+    public void openUrl(final String url) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception e) {
+                    android.util.Log.w("LightCraft", "opening " + url + ": " + e);
+                }
             }
         });
     }
@@ -196,6 +257,10 @@ public class LightCraftActivity extends NativeActivity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == DOCS || request == TREE) {
+            documentsResult(request, result, data);
+            return;
+        }
         if (request != PICK) return;
         if (result != RESULT_OK || data == null) {
             finished(new ArrayList<>()); // cancelled: the shell stops waiting
@@ -224,6 +289,113 @@ public class LightCraftActivity extends NativeActivity {
             finished(paths);
             }
         }).start();
+    }
+
+    private void documentsResult(final int request, int result, Intent data) {
+        final List<Uri> uris = new ArrayList<>();
+        if (result == RESULT_OK && data != null) {
+            ClipData clip = data.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) uris.add(clip.getItemAt(i).getUri());
+            } else if (data.getData() != null) {
+                uris.add(data.getData());
+            }
+        }
+        final String target = docsDir;
+        final String[] exts = treeExtensions;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                List<String> paths = new ArrayList<>();
+                for (Uri uri : uris) {
+                    try {
+                        if (request == TREE) {
+                            String root = DocumentsContract.getTreeDocumentId(uri);
+                            String name = treeName(uri, root);
+                            File out = free(new File(target), name);
+                            copyTree(uri, root, out, exts, 0);
+                            out.mkdirs();
+                            paths.add(out.getAbsolutePath());
+                        } else {
+                            paths.add(copyDocument(uri, new File(target)));
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("LightCraft", "copying " + uri + ": " + e);
+                    }
+                }
+                synchronized (lock) {
+                    documents.add(paths.toArray(new String[0]));
+                }
+                try {
+                    nativeWake();
+                } catch (Throwable ignored) {
+                    // not registered yet: the shell polls anyway
+                }
+            }
+        }).start();
+    }
+
+    /** A picked folder's own name (its document's display name), for its copy. */
+    private String treeName(Uri tree, String root) {
+        Uri doc = DocumentsContract.buildDocumentUriUsingTree(tree, root);
+        try (Cursor c = getContentResolver().query(doc, new String[] {DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst() && c.getString(0) != null) return safeName(c.getString(0));
+        } catch (Exception ignored) {
+        }
+        return "Folder";
+    }
+
+    /** Copy the files under {@code parent} (a document in {@code tree}) with one of {@code exts} into {@code out}. */
+    private void copyTree(Uri tree, String parent, File out, String[] exts, int depth) throws Exception {
+        if (depth > MAX_DEPTH) return;
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent);
+        String[] cols = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE};
+        try (Cursor c = getContentResolver().query(children, cols, null, null, null)) {
+            if (c == null) return;
+            while (c.moveToNext()) {
+                String id = c.getString(0), name = c.getString(1), mime = c.getString(2);
+                if (id == null || name == null) continue;
+                name = safeName(name);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    copyTree(tree, id, new File(out, name), exts, depth + 1);
+                } else if (wanted(name, exts)) {
+                    out.mkdirs();
+                    File file = new File(out, name);
+                    if (file.exists()) continue;
+                    try (InputStream in = getContentResolver().openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, id));
+                         OutputStream os = new FileOutputStream(file)) {
+                        byte[] buf = new byte[1 << 16];
+                        for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean wanted(String name, String[] exts) {
+        if (exts.length == 0) return true;
+        int dot = name.lastIndexOf('.');
+        if (dot < 0) return false;
+        String ext = name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        for (String e : exts) if (e.equals(ext)) return true;
+        return false;
+    }
+
+    /** A file name without path separators (names come from other apps). */
+    private static String safeName(String name) {
+        String s = name.replace('/', '_').replace('\\', '_');
+        return s.isEmpty() || s.equals(".") || s.equals("..") ? "_" : s;
+    }
+
+    /** Copy one picked document into {@code out} under its own name; its path. */
+    private String copyDocument(Uri uri, File out) throws Exception {
+        out.mkdirs();
+        File file = free(out, safeName(displayName(uri)));
+        try (InputStream in = getContentResolver().openInputStream(uri); OutputStream os = new FileOutputStream(file)) {
+            byte[] buf = new byte[1 << 16];
+            for (int n; (n = in.read(buf)) > 0; ) os.write(buf, 0, n);
+        }
+        return file.getAbsolutePath();
     }
 
     private void finished(List<String> paths) {

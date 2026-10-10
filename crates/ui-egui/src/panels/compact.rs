@@ -55,9 +55,17 @@ pub(crate) fn update(app: &mut LightcraftApp, ctx: &egui::Context, content: Rect
     ctx.data_mut(|d| d.insert_temp(flag_id(), compact));
 }
 
-/// The bottom sheet is up: Detail view with a right panel or Presets open.
+/// The bottom sheet is up: Detail view with a right panel or Presets open, or a grid with a
+/// panel that isn't an editing tool (Info, Keywords, Versions, History), as the desktop's grid
+/// has. (Editing tools and Presets switch to Detail.)
 pub fn sheet_open(app: &LightcraftApp) -> bool {
-    app.ui.view == ViewMode::Detail && (app.ui.right != RightPanel::None || app.ui.presets)
+    match app.ui.view {
+        ViewMode::Detail => app.ui.right != RightPanel::None || app.ui.presets,
+        ViewMode::PhotoGrid | ViewMode::SquareGrid => {
+            matches!(app.ui.right, RightPanel::Info | RightPanel::Keywords | RightPanel::Versions | RightPanel::Activity)
+        }
+        _ => false,
+    }
 }
 
 /// The window's chrome in the compact layout; the caller fills the central area as usual.
@@ -180,6 +188,7 @@ fn bottombar(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 }
                 let sort = icon_button(ui, "sort", Icon::Sort, BUTTON, false, true, "Sort");
                 egui::Popup::menu(&sort).show(|ui| super::bottombar::sort_menu(app, ui));
+                super::bottombar::select_mode_button(app, ui);
             });
             let mut right = ui.new_child(
                 egui::UiBuilder::new()

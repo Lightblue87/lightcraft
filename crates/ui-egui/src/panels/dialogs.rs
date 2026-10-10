@@ -651,10 +651,13 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         if graphic {
                             field(ui, "Graphic", |ui| {
                                 trailing_button_row(ui, |ui| {
-                                    if app.services.pick_files.is_some()
+                                    if crate::pick::can_ask_field(app, app.services.pick_files.is_some())
                                         && crate::widgets::text_button(ui, "exportWmChoose", crate::i18n::tr("Choose…"), false).clicked()
-                                        && let Some(f) = app.services.pick_files.as_mut().and_then(|pick| pick().into_iter().next())
                                     {
+                                        let req = crate::pick::PickRequest::file(crate::i18n::tr("Graphic"), crate::i18n::tr("Photos"), WM_GRAPHICS);
+                                        crate::pick::ask_field(app, "exportWmChoose", req, |s| s.pick_files.as_mut().map(|pick| pick()));
+                                    }
+                                    if let Some(f) = crate::pick::field_answer(app, ui.ctx(), "exportWmChoose").and_then(|p| p.into_iter().next()) {
                                         wm.image = f;
                                     }
                                     ui.add(egui::TextEdit::singleline(&mut wm.image).hint_text("logo.png").desired_width(ui.available_width()));
@@ -1518,6 +1521,8 @@ fn export_size(ui: &mut egui::Ui, full: &mut bool, r: &mut lightcraft_engine::ex
         *ppi = p as u16;
     }
 }
+/// What a graphic watermark can be (a logo; PNG keeps its transparency).
+const WM_GRAPHICS: &[&str] = &["png", "jpg", "jpeg", "webp", "tif", "tiff"];
 const WM_IMAGE_WIDTH: ControlSpec = spec("export.watermarkImageWidth", "Width (% of photo)", 2.0, 100.0, 20.0, 1.0);
 const WM_SIZE: ControlSpec = spec("export.watermarkSize", "Size (% of short edge)", 1.0, 15.0, 3.5, 0.5);
 const WM_OPACITY: ControlSpec = spec("export.watermarkOpacity", "Opacity (%)", 5.0, 100.0, 70.0, 1.0);

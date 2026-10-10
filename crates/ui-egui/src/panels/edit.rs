@@ -687,7 +687,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
                     _ => "Blue channel",
                 };
                 let resp = resp.on_hover_text(crate::i18n::tr_format!("{name} — double-click to reset it", name = name));
-                if resp.double_clicked() {
+                if crate::widgets::double_clicked(ui, &resp) {
                     app.ui.curve_channel = ch.into();
                     let _ = app.run("curve.reset", json!({"channel": ch}));
                 } else if resp.clicked() {
@@ -812,7 +812,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
         );
     }
     let mut new_pts = None;
-    if resp.double_clicked()
+    if crate::widgets::double_clicked(ui, &resp)
         && let Some(q) = resp.interact_pointer_pos()
         && let Some((i, dist)) = nearest(q)
         && dist < reach
@@ -971,7 +971,7 @@ fn split_handles(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect, d: &Develo
         register(ui.ctx(), format!("curveSplit:{name}"), hit);
         let Some(spec) = controls::find(ctl) else { continue };
         let resp = resp.on_hover_text(crate::i18n::tr_format!("{name} — double-click to reset it", name = crate::i18n::tr(spec.label)));
-        if resp.double_clicked() {
+        if crate::widgets::double_clicked(ui, &resp) {
             let _ = app.run("develop.set", json!({"control": ctl, "value": spec.default}));
         } else if resp.drag_started() {
             let _ = app.run("develop.beginInteraction", json!({"label": spec.label}));
@@ -1046,11 +1046,18 @@ fn curve_footer(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings)
                     crate::panels::dialogs::prompt(app, "Save Point Curve Preset", "Preset name", "", "curve.savePreset", json!({}), "name");
                     ui.close();
                 }
-                if ui.add_enabled(app.services.pick_curve_preset_files.is_some(), egui::Button::new(crate::i18n::tr("Import Presets…"))).clicked() {
+                if ui
+                    .add_enabled(
+                        app.services.pick_curve_preset_files.is_some() || app.services.picker.is_some(),
+                        egui::Button::new(crate::i18n::tr("Import Presets…")),
+                    )
+                    .clicked()
+                {
                     let _ = app.run("file.importCurvePresets", json!({}));
                     ui.close();
                 }
-                let can_export = app.services.save_curve_preset_file.is_some() && !app.session.curve_presets.is_empty();
+                let can_export =
+                    (app.services.save_curve_preset_file.is_some() || app.services.picker.is_some()) && !app.session.curve_presets.is_empty();
                 if ui.add_enabled(can_export, egui::Button::new(crate::i18n::tr("Export Presets…"))).clicked() {
                     let _ = app.run("file.exportCurvePresets", json!({}));
                     ui.close();
@@ -1302,7 +1309,7 @@ fn grading(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings) {
         if resp.drag_stopped() || resp.clicked() {
             let _ = app.run("develop.endInteraction", json!({}));
         }
-        if resp.double_clicked() {
+        if crate::widgets::double_clicked(ui, &resp) {
             let _ = app.run("develop.set", json!({"values": {format!("grading.{key}.hue"): 0, format!("grading.{key}.sat"): 0}}));
         }
     }

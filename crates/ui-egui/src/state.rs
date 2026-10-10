@@ -277,6 +277,9 @@ pub enum KeywordingView {
     WillExport,
 }
 
+/// The fewest and most thumbnails across the compact grid.
+pub const GRID_COLUMNS: (u8, u8) = (1, 8);
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct UiState {
@@ -312,6 +315,8 @@ pub struct UiState {
     pub zoom_anim: bool,
     pub before_after: BeforeAfter,
     pub thumb_size: f32,
+    /// Thumbnails across the compact (phone) grid, which has no size slider: a pinch changes it.
+    pub grid_columns: u8,
     /// Open Edit sections by id.
     pub open_sections: Vec<String>,
     /// Open flyouts (curve, mixer, grading…).
@@ -462,6 +467,16 @@ pub struct UiState {
     pub local_browse_root: Option<String>,
     /// Culling: after a rating, flag or colour-label key, move to the next photo.
     pub auto_advance: bool,
+    /// Edit ▸ Select Several (for touch screens, which have no ⌘ or ⇧ to click with): a tap on a
+    /// photo adds it to the selection or takes it out, as ⌘-click does.
+    #[serde(skip)]
+    pub select_mode: bool,
+    /// Touch screens (no ⇧ or ⌥ to click with): a tap with the Color Range picker adds a sample,
+    /// as ⇧-click does; a tap with the Object tool leaves out what's under it, as ⌥-click does.
+    #[serde(skip)]
+    pub pick_adds: bool,
+    #[serde(skip)]
+    pub object_excludes: bool,
     /// Full-screen preview (F): the photo alone on black, no chrome.
     pub fullscreen: bool,
     /// Window ▸ Second Window.
@@ -801,6 +816,7 @@ impl Default for UiState {
             zoom_anim: false,
             before_after: BeforeAfter::Off,
             thumb_size: 220.0,
+            grid_columns: 3,
             open_sections: vec!["light".into()],
             open_flyouts: vec![],
             single_panel: false,
@@ -866,6 +882,9 @@ impl Default for UiState {
             visualize_spots: false,
             spots_threshold: 50.0,
             auto_advance: false,
+            select_mode: false,
+            pick_adds: false,
+            object_excludes: false,
             fullscreen: false,
             slideshow: None,
             second_window: false,
@@ -928,6 +947,7 @@ impl UiState {
     /// Clamp values restored from disk.
     pub fn sanitized(mut self) -> Self {
         self.thumb_size = self.thumb_size.clamp(90.0, 480.0);
+        self.grid_columns = self.grid_columns.clamp(GRID_COLUMNS.0, GRID_COLUMNS.1);
         self.left_width = LEFT_WIDTH.clamp(self.left_width);
         self.right_width = RIGHT_WIDTH.clamp(self.right_width);
         self.brush_size = self.brush_size.clamp(0.002, 0.5);

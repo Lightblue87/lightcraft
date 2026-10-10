@@ -76,6 +76,8 @@ mod tests_masking_layout;
 #[cfg(test)]
 mod tests_menubar;
 #[cfg(test)]
+mod tests_mobile;
+#[cfg(test)]
 mod tests_offline;
 #[cfg(test)]
 mod tests_panels;
@@ -267,6 +269,8 @@ pub struct LightcraftApp {
     pub copied: Option<String>,
     /// Native file dialogs up for commands (`pick`): each command runs again when its closes.
     pub(crate) pending_picks: Vec<pick::Pending>,
+    /// Native file dialogs up for buttons inside dialogs (`pick::ask_field`), by button.
+    pub(crate) field_picks: Vec<(String, Receiver<Vec<String>>)>,
     /// Modifiers announced for synthetic input (held from a button down to its release).
     synthetic_mods: egui::Modifiers,
     /// Clear `synthetic_mods` on the next frame.
@@ -373,6 +377,7 @@ impl LightcraftApp {
             synthetic: vec![],
             copied: None,
             pending_picks: vec![],
+            field_picks: vec![],
             synthetic_mods: egui::Modifiers::NONE,
             synthetic_mods_release: false,
             pointer_gone_deferred: false,
@@ -475,6 +480,35 @@ impl LightcraftApp {
     }
 
     /// Show a transient toast at the bottom of the canvas (like the reference app's HUD).
+    /// A finger has no Esc, F or Space: on a touch screen, full screen (and a slideshow) shows
+    /// Exit and, in a slideshow, Pause / Play in the top-right corner of the safe area.
+    fn fullscreen_touch_controls(&mut self, ctx: &egui::Context) {
+        if !widgets::touch_screen(ctx) {
+            return;
+        }
+        // (anchored within the content rect: inside the safe area)
+        egui::Area::new(egui::Id::new("fullscreen-touch")).anchor(egui::Align2::RIGHT_TOP, [-12.0, 12.0]).order(egui::Order::Foreground).show(
+            ctx,
+            |ui| {
+                egui::Frame::NONE.fill(egui::Color32::from_black_alpha(170)).corner_radius(6.0).inner_margin(6.0).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if let Some((interval, _, paused)) = self.ui.slideshow {
+                            let label = if paused { "Play" } else { "Pause" };
+                            if widgets::text_button(ui, "slideshowPause", label, false).clicked() {
+                                let now = ui.input(|i| i.time);
+                                self.ui.slideshow = Some((interval, now + interval, !paused));
+                            }
+                        }
+                        if widgets::text_button(ui, "fullscreenExit", "Exit", false).clicked() {
+                            self.ui.fullscreen = false;
+                            self.ui.slideshow = None;
+                        }
+                    });
+                });
+            },
+        );
+    }
+
     /// Advance a running slideshow (wrapping around at the end).
     fn slideshow_tick(&mut self, ctx: &egui::Context) {
         let Some((interval, due, paused)) = self.ui.slideshow else { return };
@@ -1050,6 +1084,7 @@ impl LightcraftApp {
         // inside the safe area (iOS: clear of the status bar, Dynamic Island and home indicator;
         // the insets are zero elsewhere), in the compact layout when that is narrow
         let content = ui.ctx().content_rect();
+        widgets::note_pointer(ui.ctx());
         panels::compact::update(self, &ui.ctx().clone(), content);
         if content != ui.max_rect() {
             ui.painter().rect_filled(ui.max_rect(), 0.0, theme::Tokens::get(ui.ctx()).chrome);
@@ -1077,6 +1112,7 @@ impl LightcraftApp {
         if self.ui.fullscreen {
             // full-screen preview: the photo alone on black
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(egui::Color32::BLACK)).show(ui, |ui| panels::detail::show(self, ui));
+            self.fullscreen_touch_controls(&ctx);
             panels::second::show(self, &ctx);
             panels::notices::show(self, &ctx);
             panels::dialogs::show(self, &ctx);
