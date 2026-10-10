@@ -42,7 +42,8 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, tab: &mut String) {
     // widening the dialog past the screen
     ui.set_max_width(width);
     ui.set_min_height(330.0);
-    ui.horizontal(|ui| {
+    // the tabs wrap onto a second row on a phone instead of widening the dialog
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         for (id, label) in TABS {
             if crate::widgets::text_button(ui, &format!("settingsTab-{id}"), label, tab == id).clicked() {

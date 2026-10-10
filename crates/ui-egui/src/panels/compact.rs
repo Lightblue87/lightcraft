@@ -1,5 +1,6 @@
 //! The compact layout: phones, and any window narrower than [`COMPACT_WIDTH`] (iPad Split View, a
-//! phone browser) or shorter than [`COMPACT_HEIGHT`] (a phone held sideways). The desktop
+//! phone browser) or shorter than [`COMPACT_HEIGHT`] and narrower than [`COMPACT_SHORT_WIDTH`]
+//! (a phone held sideways). The desktop
 //! layout's side columns and filmstrip leave such a window no room for the photo, so here:
 //!
 //! - the top bar keeps the sidebar toggle, Back, the menus (one "Menu" button), a search field
@@ -31,6 +32,11 @@ pub const COMPACT_WIDTH: f32 = 600.0;
 /// bar). The smallest iPad in landscape is 744 pt tall.
 pub const COMPACT_HEIGHT: f32 = 500.0;
 
+/// A short window is compact only when it is also narrower than this: phones in landscape are at
+/// most about 960 pt wide, while a short but wide desktop window keeps the desktop layout and its
+/// menu bar.
+pub const COMPACT_SHORT_WIDTH: f32 = 1000.0;
+
 /// Width of the sheet and the My Photos drawer when they sit beside the photo ([`beside`]).
 const SIDE_MIN: f32 = 300.0;
 const SIDE_MAX: f32 = 420.0;
@@ -59,7 +65,7 @@ pub(crate) fn update(app: &mut LightcraftApp, ctx: &egui::Context, content: Rect
     let (bottom, frames) = ctx.data(|d| d.get_temp::<(f32, u8)>(shrink_id())).unwrap_or((content.bottom(), 0));
     let frames = if content.bottom() < bottom - 0.5 { 4 } else { frames.saturating_sub(1) };
     ctx.data_mut(|d| d.insert_temp(shrink_id(), (content.bottom(), frames)));
-    let compact = content.width() < COMPACT_WIDTH || content.height() < COMPACT_HEIGHT;
+    let compact = content.width() < COMPACT_WIDTH || (content.height() < COMPACT_HEIGHT && content.width() < COMPACT_SHORT_WIDTH);
     if compact && !is_compact(ctx) {
         app.ui.left_panel = false;
     }
