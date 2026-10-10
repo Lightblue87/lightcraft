@@ -3256,6 +3256,7 @@ dependencies = [
  "lightcraft-codecs",
  "lightcraft-engine",
  "lightcraft-gpu",
+ "lightcraft-pipeline",
  "lightcraft-raster",
  "lightcraft-sysmem",
  "lightcraft-ui-egui",

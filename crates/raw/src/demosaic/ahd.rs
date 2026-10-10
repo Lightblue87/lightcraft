@@ -19,18 +19,23 @@ const MARGIN: usize = 6;
 
 pub(crate) fn ahd(m: &Mosaic) -> Rgb32f {
     let (w, h) = (m.w, m.h);
-    let tiles: Vec<(usize, usize)> = (0..h.div_ceil(TILE)).flat_map(|ty| (0..w.div_ceil(TILE)).map(move |tx| (tx * TILE, ty * TILE))).collect();
-    let results: Vec<(usize, usize, usize, usize, Vec<[f32; 3]>)> = tiles
-        .par_iter()
-        .map(|&(x0, y0)| {
-            let (tw, th) = (TILE.min(w - x0), TILE.min(h - y0));
-            (x0, y0, tw, th, tile(m, x0, y0, tw, th))
-        })
-        .collect();
     let mut out = Rgb32f::new(w, h);
-    for (x0, y0, tw, th, px) in results {
-        for y in 0..th {
-            out.data[(y0 + y) * w + x0..(y0 + y) * w + x0 + tw].copy_from_slice(&px[y * tw..(y + 1) * tw]);
+    // a row of tiles at a time: only that row's tiles are held besides the output
+    for y0 in (0..h).step_by(TILE) {
+        let th = TILE.min(h - y0);
+        let row: Vec<(usize, usize, Vec<[f32; 3]>)> = (0..w)
+            .step_by(TILE)
+            .collect::<Vec<_>>()
+            .par_iter()
+            .map(|&x0| {
+                let tw = TILE.min(w - x0);
+                (x0, tw, tile(m, x0, y0, tw, th))
+            })
+            .collect();
+        for (x0, tw, px) in row {
+            for y in 0..th {
+                out.data[(y0 + y) * w + x0..(y0 + y) * w + x0 + tw].copy_from_slice(&px[y * tw..(y + 1) * tw]);
+            }
         }
     }
     out

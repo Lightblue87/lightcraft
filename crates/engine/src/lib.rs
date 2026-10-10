@@ -912,4 +912,6 @@ mod tests_spots;
 #[cfg(test)]
 mod tests_sync;
 #[cfg(test)]
+mod tests_working_cap;
+#[cfg(test)]
 mod tests_xmp;

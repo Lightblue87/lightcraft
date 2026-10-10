@@ -7,6 +7,13 @@
 //! headroom for renders in progress, textures and the UI. The caches shrink to match: 3 decoded
 //! previews instead of 4, and a 512 MB thumbnail disk cache unless the user chose a size.
 //!
+//! Full-resolution work (exports, 1:1) is capped at what fits in half the process's limit
+//! ([`lightcraft_engine::media::MediaCache::max_working_pixels`]). A full-size export over that
+//! cap is rendered tile by tile instead, which needs about a third of the memory
+//! ([`lightcraft_engine::media::MediaCache::max_tiled_pixels`]). Only an original too large even
+//! for that (or with edits that can't be tiled) is exported smaller, and the export says so,
+//! rather than the system stopping the app.
+//!
 //! When the system runs short (iOS memory warning, Android `onTrimMemory`), [`warn`] lowers the
 //! budget by a quarter at once: the decode gate and the GPU pool follow, the pool is trimmed and
 //! free allocator pages go back to the system. It then wakes the UI, and on that frame [`poll`]
@@ -19,6 +26,12 @@ use lightcraft_engine::Session;
 
 const MIN: usize = 256 << 20;
 const MAX: usize = 1 << 30;
+/// Peak memory of a full-resolution render per pixel, measured on a 48 MP JPEG (2.87 GB).
+const BYTES_PER_WORKING_PIXEL: usize = 60;
+/// Peak memory of a tiled full-size export per pixel besides the tiles' own working set (the
+/// decode, the source and the output), measured on a 60 MP DNG (2.0 GB) and a 48 MP JPEG
+/// (1.17 GB).
+const BYTES_PER_TILED_PIXEL: usize = 34;
 
 /// The system asked for memory back.
 static PRESSURE: AtomicBool = AtomicBool::new(false);
@@ -68,12 +81,29 @@ pub fn configure(session: &mut Session, ctx: &egui::Context) {
     let limit = process_limit();
     let b = session.set_memory_budget(budget_for(limit));
     session.media.preview_capacity = 3;
+    // full-resolution renders peak near 60 bytes a pixel (decode plus the float pipeline): keep
+    // one within half of what the process may use, so a big original can't get the app killed
+    let max_px = limit.map_or(0, |l| l / 2 / BYTES_PER_WORKING_PIXEL);
+    session.media.max_working_pixels = max_px;
+    let tiles = lightcraft_pipeline::tiled::TileOptions::default().working_bytes();
+    let tiled_px = limit.map_or(0, |l| (l / 2).saturating_sub(tiles) / BYTES_PER_TILED_PIXEL);
+    session.media.max_tiled_pixels = tiled_px;
+    // tiles on the GPU need more: only exports that leave room for that use it
+    let gpu_tiles = lightcraft_gpu::tiled_working_bytes(&lightcraft_pipeline::tiled::TileOptions::default());
+    session.media.max_gpu_tiled_pixels = limit.map_or(0, |l| (l / 2).saturating_sub(gpu_tiles) / BYTES_PER_TILED_PIXEL);
     if session.cache_mb == 0
         && let Err(e) = session.set_cache_mb(512)
     {
         log::warn!("thumbnail cache: {e}");
     }
-    log::info!("memory: process limit {} MB → budget {} MB", limit.map_or(0, |l| l >> 20), b >> 20);
+    log::info!(
+        "memory: process limit {} MB → budget {} MB, full-resolution work up to {} MP, tiled exports up to {} MP ({} MP with GPU tiles)",
+        limit.map_or(0, |l| l >> 20),
+        b >> 20,
+        max_px / 1_000_000,
+        tiled_px / 1_000_000,
+        session.media.max_gpu_tiled_pixels / 1_000_000
+    );
 }
 
 /// Act on a memory warning, if one came in since the last frame.

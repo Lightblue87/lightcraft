@@ -415,7 +415,8 @@ fn load_bytes_now(
             stages.push(("highlights", t0.elapsed()));
             colour.apply(&mut img);
             stages.push(("colour", t0.elapsed()));
-            let img = fit(&img, max_edge, max_edge, Filter::Box);
+            // (a full-size source isn't copied)
+            let img = if img.width.max(img.height) > max_edge { fit(&img, max_edge, max_edge, Filter::Box) } else { img };
             stages.push(("fit", t0.elapsed()));
             let img = img.into_oriented(raw.orientation);
             stages.push(("orient", t0.elapsed()));
@@ -464,9 +465,10 @@ fn load_bytes_now(
     }
     let d = lightcraft_codecs::decode(&bytes, fit_box(max_edge)).map_err(|e| e.to_string())?;
     drop(bytes);
-    let img = d.to_working();
+    let orientation = Orientation::from_exif(d.orientation);
+    let img = d.into_working();
     let img = if img.width.max(img.height) > max_edge { fit(&img, max_edge, max_edge, Filter::Mitchell) } else { img };
-    Ok((img.into_oriented(Orientation::from_exif(d.orientation)), None, SourceInfo::default()))
+    Ok((img.into_oriented(orientation), None, SourceInfo::default()))
 }
 
 /// The raw's gain table map with where its developed picture (the default crop, oriented) sits in

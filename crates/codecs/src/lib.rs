@@ -123,6 +123,16 @@ impl Decoded {
         to_working(self)
     }
 
+    /// [`Decoded::to_working`], converting the image in place (no second full-size copy).
+    pub fn into_working(self) -> Rgb32f {
+        let mut img = self.image;
+        if !self.space.is_working() {
+            let m = self.space.to_working().to_f32();
+            img.map_in_place(|p| mat_apply(&m, p));
+        }
+        img
+    }
+
     /// Display-encoded 8-bit sRGB (gamut clipped), with alpha.
     pub fn to_srgb8(&self) -> Rgba8 {
         let m = self.space.to_space(&lightcraft_color::SRGB);

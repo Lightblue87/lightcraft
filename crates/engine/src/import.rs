@@ -1385,6 +1385,8 @@ impl Session {
             cache: None,
             stages: None,
             view_cache: None,
+            tiled: false,
+            tiled_gpu: false,
             display: None,
         };
         let embedded = match (&self.media.preview_loader, c.kind) {

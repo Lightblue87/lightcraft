@@ -137,6 +137,10 @@ pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
                     if let Some(first) = failed.first() {
                         m += &crate::i18n::tr_format!(" · {} failed: {}", failed.len(), first["error"].as_str().unwrap_or("error"));
                     }
+                    let reduced = files.iter().filter(|f| f.get("reducedFrom").is_some()).count();
+                    if reduced > 0 {
+                        m += &crate::i18n::tr_format!(" · {reduced} made smaller to fit this device's memory", reduced = reduced);
+                    }
                     if cancelled {
                         m += " · cancelled";
                     }
@@ -153,6 +157,7 @@ pub fn poll(app: &mut LightcraftApp, ctx: &egui::Context) {
                 }
                 Err(e) => e,
             };
+            log::info!("export: {msg}");
             app.toast(ctx, msg);
         }
         Err(std::sync::mpsc::TryRecvError::Empty) => {

@@ -70,6 +70,26 @@ browsers:
   `onTrimMemory`, checked every second) the budget drops by a quarter at once, the GPU pool
   is trimmed, free allocator pages go back to the system, and the caches evict on the next
   frame (`src/memory.rs`). Log lines start with `memory:`.
+- **Full-resolution cap:** full-resolution work (exports, 1:1) is kept within half of what the
+  process may use, at ~60 bytes a pixel. That's about 45 MP on an 8 GB iPhone and 10 MP on the
+  2.4 GB emulator. A larger original is decoded and exported at the largest power-of-two
+  reduction that fits (½, ¼ …), so decoders reduce while decoding, and the export message
+  says "made smaller to fit this device's memory". The engine has this as
+  `MediaCache::max_working_pixels`, off by default; `LIGHTCRAFT_MAX_WORKING_MP` tries it on the
+  desktop.
+- **Tiled full-size exports:** a full-size export over that cap is rendered tile by tile
+  instead (`lightcraft_pipeline::tiled`), at its full size. That needs the decoded source and
+  the output plus a fixed ~160 MB of tile working memory: ~34 bytes a pixel in all, measured
+  on a 60 MP DNG (2.0 GB, against 6.9 GB rendered whole) and a 48 MP JPEG (1.17 GB, against
+  3.4 GB). The limit for these (`MediaCache::max_tiled_pixels`, `LIGHTCRAFT_MAX_TILED_MP` on
+  the desktop) is about 75 MP on an 8 GB iPhone, and 25 MP on a 4 GB emulator (whose whole
+  renders stop at 17 MP). The result matches the whole render within one 8-bit step. The tiles
+  render on the GPU when there's room for its extra ~0.75 GB (`max_gpu_tiled_pixels`, about
+  57 MP on an 8 GB iPhone), else on the CPU, which is slower: up to 2× a whole render, 6–9× with
+  Dehaze, whose wide blur makes the tiles overlap a lot (on the GPU 2–4×). A GPU whose buffers
+  can't hold a whole export (Android's 128–256 MB limits) renders it in tiles too, instead of on
+  the CPU. Edits that read the whole photo (spot
+  removal, Refine Edges, Auto Mask brushes, subject/background masks) still export smaller.
 - **Export and share:** exports go to a folder next to the library (`Documents/LightCraft
   Exports` on iOS, so they show in the Files app; the app's private files on Android). When an
   export from the Export dialog finishes, the share sheet opens with the files: AirDrop, Save
@@ -115,9 +135,13 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   small. There's no inertia when panning a zoomed photo, and no double-tap-to-zoom gesture
   beyond the existing tap toggle. The tone curve and color wheels still take every drag that
   starts on them, since they're two-dimensional controls.
-- **Memory: large exports aren't bounded yet.** A single huge raw decode can still go past
-  the budget (the engine's decode gate always lets one job through), and the GPU renders
-  whole-image buffers. Older 3–4 GB phones may need a lower cap or tiled exports.
+- **Some full-size exports still come out smaller on phones.** A whole-image render peaks near
+  60 bytes a pixel, so full-resolution work is capped, and full-size exports over the cap are
+  tiled (see above). Exports with edits that can't be tiled, originals too big even for tiles,
+  and resized exports that downscale by more than 1.25× still come out smaller. GPU tiling is
+  measured on Apple silicon only (Android's GPU compute is untested), and the 1:1 view is still
+  capped. A phone portrait (EXIF-rotated) briefly
+  holds two copies of the decoded original while it's rotated.
 - **Import caveats.** Picked photos are copied into `<library>/Picked`, so they take up space
   twice. On Android the picker hides original file names, so photos arrive named after their
   media IDs, and HEIC/HEIF is converted to JPEG on the Java side (losing EXIF). Raw files from

@@ -38,6 +38,7 @@ pub mod output;
 pub mod profiles;
 pub mod redeye;
 pub mod spots;
+pub mod tiled;
 pub mod tone;
 pub mod transform;
 pub mod upright;
@@ -644,5 +645,7 @@ mod tests_geometry;
 mod tests_hdr;
 #[cfg(test)]
 mod tests_local;
+#[cfg(test)]
+mod tests_tiled;
 #[cfg(test)]
 mod tests_window;

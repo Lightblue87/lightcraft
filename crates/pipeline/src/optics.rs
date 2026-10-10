@@ -510,6 +510,21 @@ fn hue_weight(h: f32, lo: f32, hi: f32) -> f32 {
 /// Long edge (px) at which defringe widths are specified: fringes are 1–7 px wide on a ~4000 px image.
 pub const DEFRINGE_REF_LONG: f64 = 4000.0;
 
+/// Radius (output px) of the edge window [`defringe`] looks at, for amount `max_amt`.
+pub fn defringe_radius(max_amt: f64, scale: f64) -> usize {
+    // fringe width in source px grows with the amount (1..7 px), in output px at least one
+    ((1.0 + max_amt * 0.3) * scale).round().max(1.0) as usize
+}
+
+/// How far (output px) [`defringe`] reads around a pixel under `s` (0 when it's off).
+pub fn defringe_reach(s: &DevelopSettings, scale: f64) -> usize {
+    let o = &s.optics;
+    if !s.section_enabled("optics") || (o.defringe_purple_amount <= 0.0 && o.defringe_green_amount <= 0.0) {
+        return 0;
+    }
+    defringe_radius(o.defringe_purple_amount.max(o.defringe_green_amount), scale)
+}
+
 /// Defringe: desaturate purple / green colour fringes that sit next to high-contrast edges. `scale` is output
 /// pixels per reference pixel (output long edge / [`DEFRINGE_REF_LONG`]) so the fringe width is the same
 /// fraction of the image at any size.
@@ -520,8 +535,7 @@ pub fn defringe(img: &mut Rgb32f, s: &DevelopSettings, scale: f64) {
     }
     let (w, h) = (img.width, img.height);
     let max_amt = o.defringe_purple_amount.max(o.defringe_green_amount);
-    // fringe width in source px grows with the amount (1..7 px), in output px at least one
-    let radius = ((1.0 + max_amt * 0.3) * scale).round().max(1.0) as usize;
+    let radius = defringe_radius(max_amt, scale);
     // perceptual lightness and its local range (dilated contrast)
     let lab: Vec<[f32; 3]> = img.data.iter().map(|p| oklab_from_2020([p[0].max(0.0), p[1].max(0.0), p[2].max(0.0)])).collect();
     let l = Plane { width: w, height: h, data: lab.iter().map(|p| p[0]).collect() };

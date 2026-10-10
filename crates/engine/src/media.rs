@@ -313,6 +313,18 @@ pub struct MediaCache {
     full: Option<(PhotoId, DecodedSource, u64)>,
     /// How many previews to keep (LRU).
     pub preview_capacity: usize,
+    /// The most pixels a full-resolution render works at (0: no limit). A full-resolution
+    /// decode and render of a 48 MP photo peaks near 3 GB; a host with less memory than that
+    /// (a phone) sets a cap, and larger originals are decoded and exported at the largest size
+    /// within it ([`crate::export::output_size_within`]).
+    pub max_working_pixels: usize,
+    /// The most pixels (source and output alike) a full-size export over `max_working_pixels`
+    /// may have when it is rendered tile by tile ([`lightcraft_pipeline::tiled`]), which needs
+    /// a fraction of a whole render's memory (0: such exports are made smaller instead).
+    pub max_tiled_pixels: usize,
+    /// The same for tiles rendered on the GPU, which need more memory than the CPU's (see
+    /// [`lightcraft_gpu::tiled_working_bytes`]); larger tiled exports render their tiles on the CPU.
+    pub max_gpu_tiled_pixels: usize,
     /// Bytes all decoded sources and rendered previews in memory may take together (the cache
     /// share of [`crate::memory::budget`]); the least recently used entry of any of them goes first.
     budget: usize,
@@ -388,6 +400,17 @@ impl Default for MediaCache {
             previews: Vec::new(),
             full: None,
             preview_capacity: 0,
+            // a host sets it (phones); LIGHTCRAFT_MAX_WORKING_MP tries a cap anywhere
+            max_working_pixels: std::env::var("LIGHTCRAFT_MAX_WORKING_MP")
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .map_or(0, |mp| mp * 1_000_000),
+            max_tiled_pixels: env_mp("LIGHTCRAFT_MAX_TILED_MP"),
+            max_gpu_tiled_pixels: if std::env::var_os("LIGHTCRAFT_MAX_GPU_TILED_MP").is_some() {
+                env_mp("LIGHTCRAFT_MAX_GPU_TILED_MP")
+            } else {
+                env_mp("LIGHTCRAFT_MAX_TILED_MP")
+            },
             budget,
             file_loader: None,
             file_probe: None,
@@ -582,30 +605,45 @@ impl MediaCache {
     /// How to load photo `p` at `level`: from the cache when its source is there, else from its file (with its denoised
     /// picture beside it when it has one), its smart preview or the demo scene.
     pub fn source_ref(&mut self, p: &Photo, level: SourceLevel) -> SourceRef {
-        self.source_ref_with(p, level, true)
+        self.source_ref_with(p, level, true, self.max_working_pixels)
+    }
+
+    /// [`Self::source_ref`], with a full-resolution original decoded within `max_pixels` instead
+    /// of the working cap (a tiled export's). A decoded source in memory that is smaller than
+    /// that isn't used.
+    pub fn source_ref_within(&mut self, p: &Photo, level: SourceLevel, max_pixels: usize) -> SourceRef {
+        self.source_ref_with(p, level, true, max_pixels)
     }
 
     /// [`Self::source_ref`] that never takes a decoded source from memory: for a job that needs something the cached
     /// one lacks (an export, whose denoised picture is made when it runs).
     pub fn source_ref_uncached(&mut self, p: &Photo, level: SourceLevel) -> SourceRef {
-        self.source_ref_with(p, level, false)
+        self.source_ref_with(p, level, false, self.max_working_pixels)
     }
 
-    fn source_ref_with(&mut self, p: &Photo, level: SourceLevel, cached: bool) -> SourceRef {
-        let mut r = self.source_ref_plain(p, level, cached);
+    fn source_ref_with(&mut self, p: &Photo, level: SourceLevel, cached: bool, max_pixels: usize) -> SourceRef {
+        let mut r = self.source_ref_plain(p, level, cached, max_pixels);
         if let (SourceRef::File { denoise, .. }, Some((spec, loader))) = (&mut r, self.denoise.get(p.id)) {
             *denoise = Some((spec.clone(), loader.clone()));
         }
         r
     }
 
-    fn source_ref_plain(&mut self, p: &Photo, level: SourceLevel, cached: bool) -> SourceRef {
+    fn source_ref_plain(&mut self, p: &Photo, level: SourceLevel, cached: bool, max_pixels: usize) -> SourceRef {
+        let full_edge = capped_edge(p.width as usize, p.height as usize, max_pixels);
+        let wanted = full_edge.min(p.width.max(p.height) as usize);
         if cached && let Some(a) = self.get_source(p.id, level) {
-            return SourceRef::Loaded(Box::new(a));
+            let long = a.image.width.max(a.image.height);
+            // (decoders may trim a few pixels off the header's size)
+            if level != SourceLevel::Full || !matches!(p.source, Source::File { .. }) || long * 10 >= wanted * 9 {
+                return SourceRef::Loaded(Box::new(a));
+            }
         }
         // Procedural scenes have a nominal size: "full" is that size, not unbounded.
         let max_edge = level.max_edge().min(match (&p.source, level) {
             (Source::Demo { .. }, SourceLevel::Full) => p.width.max(p.height).max(1) as usize,
+            // within the host's working-resolution cap
+            (Source::File { .. }, SourceLevel::Full) => full_edge,
             _ => usize::MAX,
         });
         // the original is offline: its smart preview, when there is one. Only cached answers are
@@ -648,6 +686,11 @@ impl MediaCache {
     }
 }
 
+/// Megapixels from environment variable `var`, in pixels (0 when unset or not a number).
+fn env_mp(var: &str) -> usize {
+    std::env::var(var).ok().and_then(|v| v.trim().parse::<usize>().ok()).map_or(0, |mp| mp * 1_000_000)
+}
+
 /// Everything needed to render one photo, detached from the session.
 #[derive(Clone)]
 pub struct RenderJob {
@@ -674,6 +717,11 @@ pub struct RenderJob {
     pub stages: Option<Arc<StageCache>>,
     /// Keep a full-quality result here as the photo's view preview ([`crate::Session::loupe_job`]).
     pub view_cache: Option<(Arc<PreviewCache>, Hash128)>,
+    /// Render tile by tile on the CPU ([`lightcraft_pipeline::tiled`]): a full-size export over
+    /// the working cap. Its full-resolution source isn't kept in memory afterwards.
+    pub tiled: bool,
+    /// A tiled render may run its tiles on the GPU (there's memory for it).
+    pub tiled_gpu: bool,
     /// Render for this monitor profile ([`Self::with_display`]).
     pub display: Option<Arc<crate::display::Display>>,
 }
@@ -788,7 +836,22 @@ impl RenderJob {
                 // Thumbnails (many small jobs side by side) stay on the CPU; views and exports use
                 // the GPU when there is one.
                 let gpu = self.cache.is_none();
-                let mut rendered = develop(src, &info, &self.settings, &self.request, self.stages.as_deref(), gpu);
+                let tiled = self.tiled.then(|| {
+                    let (s, req, opts) = (&self.settings, &self.request, Default::default());
+                    // on the GPU when it can (tile-sized device buffers), else on the CPU
+                    let r = (gpu && self.tiled_gpu && gpu_eligible(s, req))
+                        .then(|| lightcraft_gpu::render_tiled(src, &info, s, req, &opts))
+                        .flatten()
+                        .or_else(|| lightcraft_pipeline::tiled::render_tiled(src, &info, s, req, &opts));
+                    if r.is_none() {
+                        log::warn!("render: {}×{} can't be tiled; rendering it whole", req.max_w, req.max_h);
+                    }
+                    r
+                });
+                let mut rendered = match tiled.flatten() {
+                    Some(r) => r,
+                    None => develop(src, &info, &self.settings, &self.request, self.stages.as_deref(), gpu),
+                };
                 // for a display profile: the image goes to the display's values, the histogram
                 // and the cached view preview stay sRGB
                 let mut srgb = None;
@@ -813,6 +876,12 @@ impl RenderJob {
                 {
                     cache.put_deferred_at(self.cache_generation, *key, Arc::new(srgb.unwrap_or_else(|| rendered.image.clone())));
                 }
+                // a tiled export's source is larger than the working cap: not for keeping, and its
+                // pages go back before the result is encoded
+                let loaded = (!was_loaded && !self.tiled).then_some(source);
+                if self.tiled {
+                    crate::memory::release();
+                }
                 RenderResult {
                     request_id: self.request_id,
                     source_key: self.source_key,
@@ -820,7 +889,7 @@ impl RenderJob {
                     level: self.level,
                     key: self.key,
                     rendered: Ok(rendered),
-                    loaded: (!was_loaded).then_some(source),
+                    loaded,
                     quick: None,
                     display,
                 }
@@ -844,11 +913,8 @@ impl RenderJob {
 /// the CPU, reusing `stages` either way. Both produce the same image within 1–3 LSB (see
 /// `docs/gpu-pipeline.md`); `LIGHTCRAFT_GPU=0` or [`lightcraft_gpu::set_enabled`] forces the CPU.
 pub fn develop(src: &Arc<Rgb32f>, info: &SourceInfo, s: &DevelopSettings, req: &RenderRequest, stages: Option<&StageCache>, gpu: bool) -> Rendered {
-    // LUT profiles have no GPU stage: they render on the CPU
     if gpu
-        && !lightcraft_pipeline::lut::is_lut_profile(&s.profile.id)
-        && !s.masks.iter().any(|m| m.visible && m.refine > 0.0)
-        && req.proof.is_none()
+        && gpu_eligible(s, req)
         && let Some(r) = lightcraft_gpu::render(src, info, s, req, stages)
     {
         return r;
@@ -857,6 +923,12 @@ pub fn develop(src: &Arc<Rgb32f>, info: &SourceInfo, s: &DevelopSettings, req: &
         Some(st) => lightcraft_pipeline::render_cached(src, info, s, req, st),
         None => lightcraft_pipeline::render(src, info, s, req),
     }
+}
+
+/// Whether the GPU renderer handles `s` for `req` (LUT profiles, Refine Edges and soft proofs
+/// render on the CPU).
+fn gpu_eligible(s: &DevelopSettings, req: &RenderRequest) -> bool {
+    !lightcraft_pipeline::lut::is_lut_profile(&s.profile.id) && !s.masks.iter().any(|m| m.visible && m.refine > 0.0) && req.proof.is_none()
 }
 
 /// Where a [`QuickJob`]'s stand-in image came from.
@@ -1019,6 +1091,8 @@ impl crate::Session {
             cache,
             stages: None,
             view_cache: None,
+            tiled: false,
+            tiled_gpu: false,
             display: None,
         })
     }
@@ -1070,6 +1144,8 @@ impl crate::Session {
             cache: Some((self.media.rendered.clone(), ck)),
             stages: None,
             view_cache: None,
+            tiled: false,
+            tiled_gpu: false,
             display: None,
         })
     }
@@ -1116,6 +1192,8 @@ impl crate::Session {
             cache: Some((self.media.rendered.clone(), ck)),
             stages: None,
             view_cache: None,
+            tiled: false,
+            tiled_gpu: false,
             display: None,
         })
     }
@@ -1352,6 +1430,26 @@ pub struct ProbeInfo {
 }
 
 pub type FileProbe = Arc<dyn Fn(&str) -> Result<ProbeInfo, String> + Send + Sync>;
+
+/// `w` × `h` reduced by the smallest power of two (½, ¼, …) that brings it within `max_pixels`,
+/// or `None` when it fits already (or `max_pixels` is 0: no limit). Powers of two let decoders
+/// reduce while decoding (JPEG DCT scaling, raw binning) instead of decoding everything first.
+pub fn capped_size(w: usize, h: usize, max_pixels: usize) -> Option<(usize, usize)> {
+    if max_pixels == 0 || w == 0 || h == 0 || w.saturating_mul(h) <= max_pixels {
+        return None;
+    }
+    let mut d = 2;
+    while (w / d).max(1) * (h / d).max(1) > max_pixels && d < 1 << 16 {
+        d *= 2;
+    }
+    Some(((w / d).max(1), (h / d).max(1)))
+}
+
+/// The long edge a `w` × `h` image may be decoded at within `max_pixels` ([`capped_size`];
+/// `usize::MAX` when it fits or its size isn't known).
+pub fn capped_edge(w: usize, h: usize, max_pixels: usize) -> usize {
+    capped_size(w, h, max_pixels).map_or(usize::MAX, |(w, h)| w.max(h))
+}
 
 #[cfg(test)]
 mod thumbnail_hash_tests {
