@@ -123,26 +123,33 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
     }
     .to_string();
     let frame = egui::Frame::window(&ctx.global_style()).inner_margin(egui::Margin::symmetric(16, 12));
-    // The import review can be resized (its photo grid takes the room); it keeps a window id of its
-    // own so the size it is given doesn't carry over to the other dialogs. Its content scrolls
-    // rather than growing the window when the options below the grid get taller (e.g. Copy).
+    // The import review takes most of the screen (its photo grid and options column scroll on
+    // their own) and can be resized on the desktop; it keeps a window id of its own so the size
+    // it is given doesn't carry over to the other dialogs.
     let import = matches!(dlg, Dialog::Import { .. });
     let window_id = egui::Id::new(if import { "lightcraft-import-dialog" } else { "lightcraft-dialog" });
     let window = egui::Window::new(crate::i18n::tr(&title)).id(window_id)
         .collapsible(false)
-        .resizable(import)
-        .vscroll(import)
-        .resize(|r| if import { r.default_height(crate::import::DIALOG_SIZE[1]) } else { r })
+        .resizable(import && !crate::panels::compact::is_compact(ctx))
         .frame(frame)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .default_width(match dlg {
-            Dialog::Import { .. } => crate::import::DIALOG_SIZE[0],
             Dialog::SmartRules { .. } => 680.0,
             Dialog::AllMetadata { .. } => 620.0,
             Dialog::FaceModel { .. } => 460.0,
             _ => 380.0,
         });
-    let shown = crate::panels::compact::dialog(ctx, window)
+    let window = if import {
+        // inside the frame's margins and title bar
+        let area = ctx.content_rect().shrink(8.0);
+        let size = crate::import::window_size(area.size()) - egui::vec2(32.0, 64.0);
+        let window = window.vscroll(false).constrain_to(area).max_size(area.size() - egui::vec2(32.0, 64.0));
+        if crate::panels::compact::is_compact(ctx) { window.fixed_size(size) } else { window.default_size(size) }
+    } else {
+        crate::panels::compact::dialog(ctx, window)
+    };
+    let mut import_pressed = None;
+    let shown = window
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 8.0;
             match &mut dlg {
@@ -751,7 +758,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     });
                 }
                 Dialog::Merge { opts } => crate::merge::body(app, ui, opts),
-                Dialog::Import { opts } => crate::import::body(app, ui, opts),
+                Dialog::Import { opts } => import_pressed = crate::import::body(app, ui, opts),
                 Dialog::Settings { tab } => crate::panels::settings::body(app, ui, tab),
                 Dialog::SamModel { error, .. } => sam_model_body(app, ui, error.as_deref()),
                 Dialog::KeywordTag {
@@ -948,6 +955,10 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                 }
                 Dialog::Shortcuts => crate::panels::keymap::body(app, ui, &t),
             }
+            // (the import review draws its own buttons, beside or under its photos)
+            if import {
+                return;
+            }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 // a model file LightCraft cannot use has nothing to confirm
@@ -969,14 +980,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         close = true;
                     }
                 }
-                let add_label;
                 let ok = match &dlg {
-                    Dialog::Import { opts } => {
-                        let n = opts.selected_paths().len();
-                        let verb = if opts.copy && opts.move_files { "Move" } else { "Import" };
-                        add_label = crate::i18n::tr_format!("{verb} {n} Photo{}", if n == 1 { "" } else { "s" }, verb = crate::i18n::tr(verb), n = n);
-                        add_label.as_str()
-                    }
                     Dialog::ContactSheet { .. } => "Choose PDF…",
                     Dialog::Merge { .. } => "Merge",
                     Dialog::DenoiseModel { info, .. } if info["download"].is_string() => "Accept & Download",
@@ -1019,12 +1023,14 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     }
                 }
             });
-            if import {
-                crate::import::note_dialog_bottom(ui);
-            }
             // compact layout: a text field the soft keyboard just covered scrolls back into view
             crate::panels::compact::keep_focus_visible(ui);
         });
+    match import_pressed {
+        Some(crate::import::Footer::Cancel) => close = true,
+        Some(crate::import::Footer::Import) => confirm = true,
+        None => {}
+    }
     if let Some(w) = shown {
         ctx.move_to_top(w.response.layer_id);
         crate::widgets::register(ctx, "dialog:window", w.response.rect);

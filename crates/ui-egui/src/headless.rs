@@ -2792,8 +2792,9 @@ mod tests {
         }
     }
 
-    /// The import review opens bigger than the old fixed 6 × 2.5 grid and can be resized by its
-    /// corner: the photo grid takes the new height, and the window then keeps its size (issue #337).
+    /// The import review opens as big as the screen allows (up to `import::DIALOG_SIZE`) and can be
+    /// resized by its corner: the photo grid takes the new height, and the window then keeps its
+    /// size (issue #337).
     #[test]
     fn import_review_dialog_resizes() {
         let mut h = demo([1400.0, 1000.0]);
@@ -2817,7 +2818,7 @@ mod tests {
         }
         let r0 = rect(&mut h);
         assert!(r0[3] > 600.0, "{r0:?}");
-        // the Copy options add rows below the grid: the grid makes room, the window doesn't grow
+        // the Copy options add rows to the options column: it scrolls, the window doesn't grow
         for copy in [true, false] {
             if let Some(crate::state::Dialog::Import { opts }) = &mut h.app.ui.dialog {
                 opts.copy = copy;
@@ -2828,13 +2829,16 @@ mod tests {
             let r = rect(&mut h);
             assert!((r[3] - r0[3]).abs() < 0.5, "copy {copy}: {r0:?} → {r:?}");
         }
+        let grid = |h: &Headless| h.app.widgets.iter().rev().find(|(w, _)| w == "grid:importPhotos").map(|(_, r)| r.height()).unwrap();
+        let g0 = grid(&h);
         let (x, y) = (r0[0] + r0[2] - 3.0, r0[1] + r0[3] - 3.0);
-        h.request("ui.drag", json!({"x": x, "y": y, "toX": x + 160.0, "toY": y + 120.0, "steps": 12}), t);
+        h.request("ui.drag", json!({"x": x, "y": y, "toX": x - 160.0, "toY": y - 120.0, "steps": 12}), t);
         for _ in 0..10 {
             h.step();
         }
         let r1 = rect(&mut h);
-        assert!(r1[2] > r0[2] + 100.0 && r1[3] > r0[3] + 80.0, "dragging the corner resized it: {r0:?} → {r1:?}");
+        assert!(r1[2] < r0[2] - 100.0 && r1[3] < r0[3] - 80.0, "dragging the corner resized it: {r0:?} → {r1:?}");
+        assert!(grid(&h) < g0 - 80.0, "the photo grid took the new height: {g0} → {}", grid(&h));
         for _ in 0..60 {
             h.step();
         }
