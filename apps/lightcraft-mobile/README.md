@@ -35,15 +35,23 @@ If `cargo` on `PATH` isn't rustup's, set `CARGO` (for example
 
 ## Phone layout
 
-Below 600pt of width (inside the safe area), `lightcraft-ui-egui` switches to a compact layout
-(`crates/ui-egui/src/panels/compact.rs`). It's used on phones, iPad Split View and phone
-browsers:
+Below 600pt of width or 500pt of height (inside the safe area), `lightcraft-ui-egui` switches to
+a compact layout (`crates/ui-egui/src/panels/compact.rs`). It's used on phones in either
+orientation, iPad Split View and phone browsers:
 
 - **Top bar:** My Photos, Back, Menu, a search field, Filter and Export.
 - **Detail view:** the photo on top, and a bottom sheet with a tool row (Presets, Edit, Crop,
-  Remove, Masking, Info …). The sheet shows that panel at full width; Hide puts it away.
-- **My Photos:** a full-width drawer that closes when you pick a source.
-- **Grid:** about three thumbnails across.
+  Remove, Masking, Info …). The sheet shows that panel at full width; Hide puts it away. In
+  landscape the sheet is a column at the right of the photo instead. The histogram is lower
+  than on the desktop, and the filmstrip is lower in landscape.
+- **My Photos:** a full-width drawer (a column at the left in landscape) that closes when you
+  pick a source.
+- **Grid:** about three thumbnails across the screen's short side, so landscape shows more of
+  them, and two rows at least.
+- **Filter bar:** its groups wrap onto as many rows as they need.
+- **Touch sizes:** on a phone's touch screen buttons, fields, checkboxes and menu items are
+  30pt tall (22pt with a mouse). Dialogs span the screen up to 560pt wide and scroll.
+- **Before/After Left/Right** stacks the two views when the photo area is taller than wide.
 - **Bottom bar:** view modes, Sort, Filmstrip and an Edit toggle.
 - **Loupe gestures:** pinch zooms about the fingers, from Fit to 1600%, and pinching back in
   snaps to Fit. Moving both fingers pans. At Fit, a one-finger swipe sideways drags the photo
@@ -214,8 +222,9 @@ The whole UI stays inside the iOS safe area (status bar, Dynamic Island, home in
   and iOS 27 kills apps without it. `src/ios_scene.rs` and the scene manifest in `ios/Info.plist`
   attach winit's window to the scene, which works on iOS 26.5 and 27.0. There's one scene only
   (no multiwindow), and this goes away when eframe moves to winit 0.31.
-- **Phone layout is a first pass.** Narrow windows get a compact layout and phone-sized
-  dialogs (see below). There's no landscape-specific arrangement.
+- **Phone layout is a first pass.** Narrow and short windows get a compact layout and
+  phone-sized dialogs (see above). Survey on a phone shows every photo at once, so with many
+  selected the thumbnails get small.
 - **Soft keyboard.** On iOS, tapping the photo to dismiss the keyboard also toggles its zoom.
   On Android the insets are polled (about 10 times a second while typing and for a second
   after, twice a second otherwise), so the layout follows the keyboard a moment late. Composing was

@@ -341,8 +341,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let full = ui.max_rect();
     let fullscreen = app.ui.fullscreen;
     // compact layout: the edit sheet takes the filmstrip's place
-    let show_film = app.ui.filmstrip && !fullscreen && !(super::compact::is_compact(ui.ctx()) && super::compact::sheet_open(app));
-    let film_h = if show_film { t.film_h } else { 0.0 };
+    let compact = super::compact::is_compact(ui.ctx());
+    let show_film = app.ui.filmstrip && !fullscreen && !(compact && super::compact::sheet_open(app));
+    let film_h = if show_film { film_height(ui.ctx(), full) } else { 0.0 };
     let canvas = Rect::from_min_max(full.min, pos2(full.right(), full.bottom() - film_h));
     app.canvas_rect = Some(canvas);
     if show_film {
@@ -372,7 +373,12 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // two views (before, after): side by side or stacked
     let split = matches!(app.ui.before_after, BeforeAfter::SideBySide | BeforeAfter::TopBottom);
     let split_view = matches!(app.ui.before_after, BeforeAfter::Split | BeforeAfter::SplitTopBottom);
-    let areas: Vec<Rect> = match app.ui.before_after {
+    // a phone held upright: Left/Right stacks the two (side by side, each would be a sliver)
+    let before_after = match app.ui.before_after {
+        BeforeAfter::SideBySide if compact && area.height() > area.width() => BeforeAfter::TopBottom,
+        b => b,
+    };
+    let areas: Vec<Rect> = match before_after {
         BeforeAfter::SideBySide => {
             let half = area.width() / 2.0 - 6.0;
             vec![
@@ -2122,13 +2128,24 @@ fn film_label(name: &str) -> String {
     if name.chars().nth(14).is_some() { format!("{}…", name.chars().take(13).collect::<String>()) } else { name.to_string() }
 }
 
+/// The filmstrip's lowest height (the compact layout's, in a short window).
+const FILM_MIN_H: f32 = 84.0;
+
+/// The filmstrip's height under a view `full` tall: the compact layout's is lower in a short
+/// window (a phone in landscape), with smaller cells.
+pub(crate) fn film_height(ctx: &egui::Context, full: Rect) -> f32 {
+    let t = Tokens::get(ctx);
+    if super::compact::is_compact(ctx) { (full.height() * 0.24).clamp(FILM_MIN_H, t.film_h) } else { t.film_h }
+}
+
 pub(crate) fn filmstrip(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
     let t = Tokens::get(ui.ctx());
     ui.painter().rect_filled(r, 0.0, t.canvas);
     ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width(), 4.0)), 0.0, Color32::from_gray(0x20));
     let ids = app.session.visible_cloned();
     let active = app.session.selection.active;
-    let cell_w = 120.0;
+    // 120 pt cells in the full-height strip, narrower in a lower one
+    let cell_w = (120.0 * r.height() / t.film_h).round().clamp(70.0, 120.0);
     let ppp = ui.ctx().pixels_per_point();
     if ids.is_empty() {
         let why = if app.session.filter != Default::default() { "No photos match the filters (View → Clear Filters)" } else { "No photos" };
@@ -2169,13 +2186,14 @@ pub(crate) fn filmstrip(app: &mut LightcraftApp, ui: &mut egui::Ui, r: Rect) {
                 t.canvas
             };
             p.rect_filled(cr, 0.0, crate::theme::label_background(base, label, selected));
-            let names = app.ui.settings.film_names;
+            // (no room for the name and format over a narrow cell)
+            let names = app.ui.settings.film_names && cell_w >= 100.0;
             if let Some(ph) = app.session.catalog.photo(*id).filter(|_| names) {
                 let name = ph.file_name.rsplit_once('.').map(|(n, _)| n).unwrap_or(&ph.file_name);
                 p.text(pos2(cr.left() + 8.0, cr.top() + 10.0), Align2::LEFT_CENTER, film_label(name), t.font(10.0), t.text_dim);
                 p.text(pos2(cr.right() - 8.0, cr.top() + 10.0), Align2::RIGHT_CENTER, &ph.format, t.semibold(8.5), t.text_dim);
             }
-            let img_area = Rect::from_min_max(cr.min + vec2(10.0, 22.0), cr.max - vec2(10.0, 8.0));
+            let img_area = Rect::from_min_max(cr.min + vec2(10.0, if cell_w >= 100.0 { 22.0 } else { 8.0 }), cr.max - vec2(10.0, 8.0));
             super::grid::request_thumb(app, *id, (256.0 * ppp.min(2.0) / 2.0) as usize * 2, 8);
             if let Some(tex) = app.renderer.thumb(*id) {
                 let [tw, th] = tex.size;

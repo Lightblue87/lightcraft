@@ -164,6 +164,17 @@ fn exposure_in_view(h: &mut Headless) -> egui::Rect {
     track
 }
 
+/// A finger touches the screen (no press: nothing is clicked), so the layout takes its touch-screen
+/// sizes before a test measures where things are.
+fn touch_screen(h: &mut Headless) {
+    let p = egui::pos2(1.0, 1.0);
+    let touch = |phase| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(9), phase, pos: p, force: None };
+    h.input([touch(egui::TouchPhase::Start), touch(egui::TouchPhase::End)]);
+    for _ in 0..3 {
+        h.step();
+    }
+}
+
 /// One finger from `from` to `to` in `steps` moves, then lifted.
 fn touch_drag(h: &mut Headless, from: egui::Pos2, to: egui::Pos2, steps: usize) {
     let touch = |phase, pos| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos, force: None };
@@ -184,6 +195,7 @@ fn touch_drag(h: &mut Headless, from: egui::Pos2, to: egui::Pos2, steps: usize) 
 fn touch_swipe_up_on_a_slider_scrolls_the_sheet_instead() {
     let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
     let before = exposure(&h);
+    touch_screen(&mut h);
     let track = exposure_in_view(&mut h);
     // start on the track, left of the thumb, and swipe up
     let from = egui::pos2(track.left() + 20.0, track.center().y);
@@ -197,6 +209,7 @@ fn touch_swipe_up_on_a_slider_scrolls_the_sheet_instead() {
 fn touch_swipe_sideways_on_a_slider_adjusts_it_by_the_distance() {
     let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
     let before = exposure(&h);
+    touch_screen(&mut h);
     let track = exposure_in_view(&mut h);
     // from near the left end, 40 pt right: by touch the value moves by 40 pt's worth, rather
     // than jumping to the finger (which would set it near the minimum)
@@ -215,6 +228,7 @@ fn touch_swipe_sideways_on_a_slider_adjusts_it_by_the_distance() {
 fn touch_tap_on_a_slider_leaves_the_value() {
     let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
     let before = exposure(&h);
+    touch_screen(&mut h);
     let track = exposure_in_view(&mut h);
     let at = egui::pos2(track.left() + 10.0, track.center().y);
     touch_drag(&mut h, at, at, 0);
@@ -383,4 +397,94 @@ fn mouse_drag_at_fit_doesnt_change_the_photo() {
         h.step();
     }
     assert_eq!(h.app.session.active(), first);
+}
+
+#[test]
+fn a_short_dialog_keeps_its_own_height_on_the_desktop() {
+    let mut h = demo([1400.0, 900.0], json!({"view": "detail"}));
+    open(&mut h, "dialog.labelNames");
+    let r = dialog_rect(&h).expect("label names");
+    assert!(r.height() < 600.0, "sized to its contents, not the screen: {r:?}");
+}
+
+/// A phone held sideways (about 400 pt tall, from the safe area).
+const PHONE_LANDSCAPE: [f32; 2] = [874.0, 402.0];
+
+#[test]
+fn phone_landscape_puts_the_editor_beside_the_photo() {
+    let mut h = demo(PHONE_LANDSCAPE, json!({"view": "detail", "right": "edit"}));
+    assert!(crate::panels::compact::is_compact(&h.view.ctx), "a short window is compact too");
+    let sheet = widget(&h, "panel:sheet").expect("the edit sheet is up");
+    assert!(sheet.width() < PHONE_LANDSCAPE[0] / 2.0 && sheet.right() >= PHONE_LANDSCAPE[0] - 1.0, "a column at the right: {sheet:?}");
+    let canvas = h.app.canvas_rect.expect("the loupe is drawn");
+    assert!(canvas.right() <= sheet.left() + 1.0, "the photo sits left of the sheet: {canvas:?}");
+    assert!(canvas.height() > 250.0 && canvas.width() > 400.0, "the photo keeps its room: {canvas:?}");
+    assert!(widget(&h, "slider:light.exposure").is_some(), "the Light sliders are in the sheet");
+    // without the sheet the filmstrip is lower than the desktop's, so the photo keeps most of the height
+    click(&mut h, "icon:sheetClose");
+    h.step();
+    let canvas = h.app.canvas_rect.expect("the loupe");
+    let t = crate::theme::Tokens::get(&h.view.ctx);
+    let cell = h.app.widgets.iter().find(|(w, _)| w.starts_with("film:")).map(|(_, r)| *r).expect("a filmstrip cell");
+    assert!(cell.height() < t.film_h - 30.0 && canvas.height() > 2.0 * cell.height(), "{cell:?} under {canvas:?}");
+    // My Photos opens as a column beside the photos, not over them
+    let mut h = demo(PHONE_LANDSCAPE, json!({"view": "photoGrid"}));
+    click(&mut h, "icon:sidebar");
+    let left = widget(&h, "panel:left_panel").expect("My Photos is open");
+    assert!(left.width() < PHONE_LANDSCAPE[0] / 2.0, "a column: {left:?}");
+    // the grid shows more than one row of photos
+    let cells: Vec<egui::Rect> = h.app.widgets.iter().filter(|(w, _)| w.starts_with("thumb:")).map(|(_, r)| *r).collect();
+    let tops: std::collections::BTreeSet<i32> = cells.iter().map(|r| r.top() as i32).collect();
+    assert!(tops.len() >= 2, "two rows of photos at least: {cells:?}");
+}
+
+#[test]
+fn phone_landscape_dialogs_keep_a_readable_width() {
+    let mut h = demo(PHONE_LANDSCAPE, json!({"view": "photoGrid"}));
+    open(&mut h, "dialog.export");
+    let r = dialog_rect(&h).expect("Export");
+    assert!(r.width() <= 570.0 && r.top() >= 0.0 && r.bottom() <= PHONE_LANDSCAPE[1], "{r:?}");
+}
+
+#[test]
+fn phone_width_filter_bar_wraps_every_control_onto_the_screen() {
+    let mut h = demo(PHONE, json!({"view": "photoGrid", "filterBar": true}));
+    for _ in 0..4 {
+        h.step();
+    }
+    let controls: Vec<(String, egui::Rect)> = h
+        .app
+        .widgets
+        .iter()
+        .filter(|(w, _)| w.starts_with("filter:") || w.starts_with("dropdown:filter-") || w.starts_with("button:filter"))
+        .cloned()
+        .collect();
+    // stars, flags, labels, kind, edited, camera, lens, keyword, save, clear, presets
+    assert!(controls.len() >= 20, "{controls:?}");
+    for (id, r) in &controls {
+        assert!(r.left() >= 0.0 && r.right() <= PHONE[0], "{id} is on screen: {r:?}");
+    }
+    let bar = widget(&h, "filterbar").expect("the bar");
+    assert!(controls.iter().all(|(_, r)| bar.contains_rect(*r)), "inside the bar {bar:?}: {controls:?}");
+}
+
+#[test]
+fn phone_touch_screen_gets_finger_sized_controls() {
+    let mut h = demo(PHONE, json!({"view": "photoGrid"}));
+    let mouse = h.view.ctx.global_style().spacing.interact_size.y;
+    let p = egui::pos2(200.0, 400.0);
+    let touch = |phase| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos: p, force: None };
+    h.input([touch(egui::TouchPhase::Start), touch(egui::TouchPhase::End)]);
+    for _ in 0..3 {
+        h.step();
+    }
+    let finger = h.view.ctx.global_style().spacing.interact_size.y;
+    assert!(finger >= mouse + 6.0, "{mouse} → {finger}");
+    // a desktop-sized window keeps the mouse sizes, touch screen or not
+    let mut h = demo([1400.0, 900.0], json!({"view": "photoGrid"}));
+    h.input([touch(egui::TouchPhase::Start), touch(egui::TouchPhase::End)]);
+    for _ in 0..3 {
+        h.step();
+    }
+    assert_eq!(h.view.ctx.global_style().spacing.interact_size.y, mouse);
 }

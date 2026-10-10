@@ -207,8 +207,11 @@ fn show_inner(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let avail_w = ui.available_width() - 8.0;
     let compact = super::compact::is_compact(ui.ctx());
     pinch_thumbnails(app, ui, compact);
-    // compact layout (no thumbnail-size slider there): so many across (three at first)
-    let target = if compact { avail_w / (app.ui.grid_columns as f32 + 0.2) } else { app.ui.thumb_size };
+    // compact layout (no thumbnail-size slider there): so many across (three at first) the
+    // screen's short side, so a phone turned sideways shows more photos of the same size
+    let short = ui.ctx().content_rect().size().min_elem().min(avail_w);
+    // (and two rows at least fit a short grid)
+    let target = if compact { (short / (app.ui.grid_columns as f32 + 0.2)).min(ui.available_height() / 2.2).max(48.0) } else { app.ui.thumb_size };
     let by = resolve_group(app.session.sort.group, target);
     let group_key = match app.session.source {
         lightcraft_engine::LibrarySource::RecentlyDeleted => None,

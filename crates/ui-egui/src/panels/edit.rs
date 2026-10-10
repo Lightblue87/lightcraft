@@ -499,7 +499,9 @@ fn section(
 fn histogram(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width();
-    let (r, resp) = ui.allocate_exact_size(vec2(w, 118.0), Sense::click());
+    // lower in the compact layout's sheet, which has little height for the sliders
+    let h = if super::compact::is_compact(ui.ctx()) { 64.0 } else { 118.0 };
+    let (r, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
     register(ui.ctx(), "histogram", r);
     let p = ui.painter();
     p.rect_filled(r, 0.0, t.button);

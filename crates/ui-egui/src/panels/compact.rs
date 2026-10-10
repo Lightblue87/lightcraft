@@ -1,12 +1,14 @@
 //! The compact layout: phones, and any window narrower than [`COMPACT_WIDTH`] (iPad Split View, a
-//! phone browser). The desktop layout's side columns leave such a window no room for the photo,
-//! so here:
+//! phone browser) or shorter than [`COMPACT_HEIGHT`] (a phone held sideways). The desktop
+//! layout's side columns and filmstrip leave such a window no room for the photo, so here:
 //!
 //! - the top bar keeps the sidebar toggle, Back, the menus (one "Menu" button), a search field
 //!   that takes the free width, Filter and Export;
 //! - the tool strip goes; its tools sit in a row atop a **bottom sheet** under the photo, which
-//!   holds the right panel (Edit, Crop, Masking …) or the Presets column at full width;
-//! - My Photos (the left panel) opens as a full-width drawer, closed again by picking a source;
+//!   holds the right panel (Edit, Crop, Masking …) or the Presets column at full width; in a
+//!   window wider than tall ([`beside`]) the sheet is a column at the right of the photo instead;
+//! - My Photos (the left panel) opens as a full-width drawer (a column at the left in a wide
+//!   window), closed again by picking a source;
 //! - the bottom bar keeps the view modes, Sort and an Edit toggle.
 //!
 //! The panels themselves are the desktop ones: [`super::resizable_side`] and the Presets column
@@ -23,6 +25,15 @@ use crate::widgets::{icon_button, register};
 
 /// Content width (points, inside the safe area) below which the compact layout is used.
 pub const COMPACT_WIDTH: f32 = 600.0;
+
+/// Content height (points, inside the safe area) below which the compact layout is used: a phone
+/// in landscape (an iPhone is about 400 pt tall, an Android phone about 410 pt less its status
+/// bar). The smallest iPad in landscape is 744 pt tall.
+pub const COMPACT_HEIGHT: f32 = 500.0;
+
+/// Width of the sheet and the My Photos drawer when they sit beside the photo ([`beside`]).
+const SIDE_MIN: f32 = 300.0;
+const SIDE_MAX: f32 = 420.0;
 
 /// Side margin of the compact top bar, bottom bar and the sheet's tool row, so their icon
 /// columns line up.
@@ -48,11 +59,25 @@ pub(crate) fn update(app: &mut LightcraftApp, ctx: &egui::Context, content: Rect
     let (bottom, frames) = ctx.data(|d| d.get_temp::<(f32, u8)>(shrink_id())).unwrap_or((content.bottom(), 0));
     let frames = if content.bottom() < bottom - 0.5 { 4 } else { frames.saturating_sub(1) };
     ctx.data_mut(|d| d.insert_temp(shrink_id(), (content.bottom(), frames)));
-    let compact = content.width() < COMPACT_WIDTH;
+    let compact = content.width() < COMPACT_WIDTH || content.height() < COMPACT_HEIGHT;
     if compact && !is_compact(ctx) {
         app.ui.left_panel = false;
     }
     ctx.data_mut(|d| d.insert_temp(flag_id(), compact));
+    // a phone: controls a finger can hit
+    crate::theme::finger_sizes(ctx, compact && crate::widgets::touch_screen(ctx));
+}
+
+/// In the compact layout, whether the window is wider than tall (a phone in landscape): the
+/// sheet and the My Photos drawer then sit beside the photo as columns, not over or under it.
+pub fn beside(ctx: &egui::Context) -> bool {
+    let r = ctx.content_rect();
+    is_compact(ctx) && r.width() > r.height()
+}
+
+/// The width of a column beside the photo ([`beside`]) in a region `avail` wide.
+pub fn side_width(avail: f32) -> f32 {
+    (avail * 0.45).clamp(SIDE_MIN, SIDE_MAX).min(avail)
 }
 
 /// The bottom sheet is up: Detail view with a right panel or Presets open, or a grid with a
@@ -223,29 +248,31 @@ fn close_sheet(app: &mut LightcraftApp) {
     app.ui.presets = false;
 }
 
-/// The bottom sheet: a row of tools, then the right panel or Presets at full width.
+/// The bottom sheet: a row of tools, then the right panel or Presets at full width. In a wide
+/// window ([`beside`]) it is a column at the right of the photo.
 fn sheet(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let avail = ui.available_rect_before_wrap();
-    // the photo keeps the upper part; the sheet gets the rest, within reason
-    let height = (avail.height() * 0.5).clamp(220.0, (avail.height() - 160.0).max(220.0));
-    egui::Panel::bottom("compact_sheet")
-        .exact_size(height)
-        .resizable(false)
-        .frame(egui::Frame::NONE.fill(t.chrome).stroke(Stroke::new(1.0, t.divider)))
-        .show(ui, |ui| {
-            register(ui.ctx(), "panel:sheet", ui.max_rect());
-            egui::Panel::top("compact_sheet_tools")
-                .exact_size(BUTTON.y + 4.0)
-                // (inside the sheet's 1 pt border: its icons line up with the bars')
-                .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: BAR_MARGIN - 1, right: BAR_MARGIN - 1, top: 2, bottom: 2 }))
-                .show(ui, |ui| tools(app, ui));
-            if app.ui.presets {
-                super::presets::show(app, ui);
-            } else {
-                super::right::show(app, ui);
-            }
-        });
+    let panel = if beside(ui.ctx()) {
+        egui::Panel::right("compact_sheet_side").exact_size(side_width(avail.width()))
+    } else {
+        // the photo keeps the upper part; the sheet gets the rest, within reason
+        let height = (avail.height() * 0.5).clamp(220.0, (avail.height() - 160.0).max(220.0));
+        egui::Panel::bottom("compact_sheet").exact_size(height)
+    };
+    panel.resizable(false).frame(egui::Frame::NONE.fill(t.chrome).stroke(Stroke::new(1.0, t.divider))).show(ui, |ui| {
+        register(ui.ctx(), "panel:sheet", ui.max_rect());
+        egui::Panel::top("compact_sheet_tools")
+            .exact_size(BUTTON.y + 4.0)
+            // (inside the sheet's 1 pt border: its icons line up with the bars')
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: BAR_MARGIN - 1, right: BAR_MARGIN - 1, top: 2, bottom: 2 }))
+            .show(ui, |ui| tools(app, ui));
+        if app.ui.presets {
+            super::presets::show(app, ui);
+        } else {
+            super::right::show(app, ui);
+        }
+    });
 }
 
 fn tools(app: &mut LightcraftApp, ui: &mut egui::Ui) {
@@ -316,13 +343,16 @@ pub fn keep_focus_visible(ui: &egui::Ui) {
 /// Space kept between a compact-layout dialog and the safe area's edges.
 const DIALOG_INSET: f32 = 8.0;
 
+/// The widest a compact-layout dialog gets (outer size).
+const DIALOG_MAX_W: f32 = 560.0;
+
 /// A dialog's content width: `desktop`, or in the compact layout what fits across the screen
 /// inside a frame with `margin_x` of inner margin on each side.
 pub fn dialog_width(ctx: &egui::Context, desktop: f32, margin_x: f32) -> f32 {
     if !is_compact(ctx) {
         return desktop;
     }
-    desktop.min((ctx.content_rect().width() - 2.0 * (DIALOG_INSET + margin_x)).max(120.0))
+    desktop.min((ctx.content_rect().width().min(DIALOG_MAX_W + 2.0 * DIALOG_INSET) - 2.0 * (DIALOG_INSET + margin_x)).max(120.0))
 }
 
 /// A dialog window is as tall as its contents up to the screen, then scrolls (an iPad mini in
@@ -335,8 +365,9 @@ pub fn dialog<'a>(ctx: &egui::Context, win: egui::Window<'a>) -> egui::Window<'a
         // window that can't be resized keeps its default height as the room otherwise)
         return win.default_height(area.height()).max_height(area.height()).vscroll(true).constrain_to(area);
     }
-    // egui's window sizes are its outer size (frame margins included)
-    let w = area.width();
+    // egui's window sizes are its outer size (frame margins included); a phone in landscape gets
+    // a dialog of readable width, not one stretched across the screen
+    let w = area.width().min(DIALOG_MAX_W);
     // auto-sized: as tall as its contents up to the screen, then it scrolls
     win.auto_sized().min_width(w).max_width(w).max_height(area.height()).vscroll(true).constrain_to(area)
 }
