@@ -421,4 +421,46 @@ mod tests {
         assert!(bare.run("file.importPresets", json!({})).is_err(), "no dialog on this platform");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// A phone's document picker (no synchronous dialog) installs a denoise model: the .onnx and
+    /// its manifest are picked together, and as copies they need not share a folder.
+    #[test]
+    fn denoise_install_from_file_uses_the_document_picker() {
+        let dir = std::env::temp_dir().join(format!("lc-pick-denoise-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (mut h, asked) = app_with_picker();
+        assert!(h.app.services.pick_denoise_model.is_none());
+        h.app.session.set_denoise_models_dir(Some(dir.join("denoise-models")));
+        // the picked copies: the model in one folder, its manifest in another
+        let model = crate::tests_model_setup::denoise_file(&dir);
+        let manifest = dir.join("elsewhere").join("denoise-model.json");
+        std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+        std::fs::rename(model.with_file_name("denoise-model.json"), &manifest).unwrap();
+        h.app.ui.dialog = Some(Dialog::Settings { tab: "denoise".into() });
+        h.settle(SETTLE);
+        let runtime = h.app.session.execute("denoise.models.list", &json!({})).unwrap()["runtime"] == true;
+        let (tx, rx) = channel();
+        if runtime {
+            // the button asks the picker for both files
+            let r = h.request("ui.clickWidget", json!({"id": "denoise:installFile"}), Duration::from_secs(10));
+            assert_eq!(r["ok"], true, "{r}");
+            h.step();
+            let asked = asked.lock().unwrap();
+            assert_eq!(asked.len(), 1, "one dialog");
+            assert_eq!(asked[0].0.kind, PickKind::Files);
+            assert_eq!(asked[0].0.filter.as_ref().map(|f| f.1), Some(&["onnx", "json"][..]));
+            asked[0].1.send(vec![manifest.to_string_lossy().into(), model.to_string_lossy().into()]).unwrap();
+        } else {
+            // without the runtime (this crate tested alone) the button is off: answer as it would
+            h.app.field_picks.push(("denoiseInstallFile".into(), rx));
+            tx.send(vec![manifest.to_string_lossy().into(), model.to_string_lossy().into()]).unwrap();
+        }
+        h.settle(SETTLE);
+        match &h.app.ui.dialog {
+            Some(Dialog::DenoiseModel { info, .. }) => assert_eq!(info["model"]["id"], "test-smoothing", "{info}"),
+            other => panic!("the model's terms are shown: {other:?}"),
+        }
+        assert!(model.with_file_name("denoise-model.json").is_file(), "the manifest is put beside the model");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -2357,5 +2357,8 @@
   "CPU": "CPU",
   "A face model uses the GPU only when a check shows it gives the same results faster.": "Ein Gesichtsmodell nutzt die GPU nur, wenn eine Prüfung zeigt, dass sie dieselben Ergebnisse schneller liefert.",
   "Checking the GPU for faces": "GPU für Gesichter wird geprüft",
-  "Copying picked files": "Ausgewählte Dateien werden kopiert"
+  "Copying picked files": "Ausgewählte Dateien werden kopiert",
+  "Install your own ONNX model: choose its .onnx file and its denoise-model.json together. This build offers no model downloads.": "Installiere dein eigenes ONNX-Modell: Wähle die .onnx-Datei und ihre denoise-model.json zusammen aus. Diese Version bietet keine Modell-Downloads.",
+  "Denoise model": "Entrauschungsmodell",
+  "Choose the model's .onnx file.": "Wähle die .onnx-Datei des Modells."
 }

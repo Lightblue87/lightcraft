@@ -90,6 +90,11 @@ orientation, iPad Split View and phone browsers:
   the exports folder and open the share sheet with it (Save to Files, AirDrop, Drive …).
   Edit in External Editor offers its edit copy there too, to open in another app.
 - **Links and the network:** Help ▸ links, About and the model download pages open in the browser. The Android app asks for the network (`INTERNET`), which face and AI model downloads need.
+- **Face recognition and AI Denoise:** as on the desktop (Settings ▸ Faces and ▸ Denoise). Their
+  models are kept outside the library, in `Library/Application Support/LightCraft/models` and
+  `…/denoise-models` on iOS (not shown in the Files app) and in `<internal data>/models` and
+  `…/denoise-models` on Android (`Session::with_models_in`). AI Denoise's Install from file…
+  picks the `.onnx` and its `denoise-model.json` together in the document picker.
 - **Surviving a reinstall (iOS):** iOS gives a reinstalled or updated app a new container
   path, but the catalog stores absolute paths. When the library opens, the engine relinks
   photos that were inside the library at its old location (such as `Picked/` copies) to the

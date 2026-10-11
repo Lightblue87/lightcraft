@@ -2157,5 +2157,8 @@
   "CPU": "CPU",
   "A face model uses the GPU only when a check shows it gives the same results faster.": "只有在檢查顯示 GPU 能更快得出相同結果時，臉孔模型才會使用 GPU。",
   "Checking the GPU for faces": "正在檢查用於臉孔的 GPU",
-  "Copying picked files": "正在拷貝所選檔案"
+  "Copying picked files": "正在拷貝所選檔案",
+  "Install your own ONNX model: choose its .onnx file and its denoise-model.json together. This build offers no model downloads.": "安裝你自己的 ONNX 模型：同時選擇其 .onnx 檔案和 denoise-model.json。此版本不提供模型下載。",
+  "Denoise model": "降噪模型",
+  "Choose the model's .onnx file.": "請選擇模型的 .onnx 檔案。"
 }

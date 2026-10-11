@@ -20,7 +20,8 @@ name = "lightcraft-ios"
 path = "src/main.rs"
 
 [dependencies]
-lightcraft-engine = { workspace = true }
+# AI Denoise's pure-Rust CPU/GPU runners, as in the desktop app
+lightcraft-engine = { workspace = true, features = ["denoise"] }
 lightcraft-pipeline = { workspace = true }
 lightcraft-ui-egui = { workspace = true }
 lightcraft-codecs = { workspace = true }

@@ -18,6 +18,8 @@ use crate::widgets::register;
 
 /// How long a read of the model list is reused (it is a few small files, but not for every frame).
 const REFRESH_SECS: f64 = 1.5;
+/// What Install from file… picks: the model, and (from a document picker) its manifest.
+const MODEL_FILES: &[&str] = &["onnx", "json"];
 /// Cache limits offered (GB).
 const CACHE_LIMITS: [u32; 6] = [5, 10, 20, 50, 100, 250];
 
@@ -219,6 +221,22 @@ pub fn detail_status(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, am
     }
 }
 
+/// The `.onnx` among picked files, with the picked manifest put beside it when it isn't there
+/// already: a document picker's copies of two files need not share a folder. The copy is in the
+/// app's own storage; a manifest already beside the model is never replaced.
+fn model_beside_manifest(paths: &[String]) -> Option<String> {
+    let has_ext = |p: &&String, ext: &str| std::path::Path::new(p.as_str()).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    let model = paths.iter().find(|p| has_ext(p, "onnx"))?;
+    let beside = std::path::Path::new(model).with_file_name("denoise-model.json");
+    if let Some(manifest) = paths.iter().find(|p| has_ext(p, "json"))
+        && !beside.exists()
+        && let Err(e) = std::fs::copy(manifest, &beside)
+    {
+        log::warn!("denoise model: could not put {manifest} beside {model}: {e}");
+    }
+    Some(model.clone())
+}
+
 /// The Settings ▸ Denoise tab.
 pub fn settings_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
     let list = models(app, ui.ctx());
@@ -245,24 +263,38 @@ pub fn settings_tab(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens) {
         .map(|v| v["downloads"].as_array().cloned().unwrap_or_default())
         .unwrap_or_default();
     heading(ui, t, "Models");
-    let r = ui.add_enabled(runtime && app.services.pick_denoise_model.is_some(), egui::Button::new(tr("Install from file…")));
+    // the desktop's file dialog picks the .onnx (its manifest is beside it); a phone's document
+    // picker (`Services::picker`) hands over copies, so both files are picked together
+    let synchronous = app.services.pick_denoise_model.is_some();
+    let r = ui.add_enabled(runtime && crate::pick::can_ask_field(app, synchronous), egui::Button::new(tr("Install from file…")));
     register(ui.ctx(), "denoise:installFile", r.rect);
-    if r.clicked()
-        && let Some(path) = app.services.pick_denoise_model.as_mut().and_then(|f| f().into_iter().next())
-    {
-        match app.session.execute("denoise.models.inspect", &json!({"path": path})) {
-            Ok(info) => {
+    if r.clicked() {
+        let req = crate::pick::PickRequest::files(Some(tr("Install from file…").to_string()), tr("Denoise model"), MODEL_FILES);
+        crate::pick::ask_field(app, "denoiseInstallFile", req, |s| s.pick_denoise_model.as_mut().map(|f| f()));
+    }
+    if let Some(paths) = crate::pick::field_answer(app, ui.ctx(), "denoiseInstallFile") {
+        match model_beside_manifest(&paths).map(|path| app.session.execute("denoise.models.inspect", &json!({"path": path}))) {
+            Some(Ok(info)) => {
                 app.caches.denoise.rejected = None;
                 app.ui.dialog = Some(crate::state::Dialog::DenoiseModel { info, accepted: false });
             }
-            Err(e) => app.caches.denoise.rejected = Some(plain(&e)),
+            Some(Err(e)) => app.caches.denoise.rejected = Some(plain(&e)),
+            None => app.caches.denoise.rejected = Some(tr("Choose the model's .onnx file.").to_string()),
         }
     }
     if let Some(why) = &app.caches.denoise.rejected {
         hint(ui, t, why);
     }
     if all.is_empty() {
-        hint(ui, t, "Install your own ONNX model with denoise-model.json beside it. This build offers no model downloads.");
+        if synchronous {
+            hint(ui, t, "Install your own ONNX model with denoise-model.json beside it. This build offers no model downloads.");
+        } else {
+            hint(
+                ui,
+                t,
+                "Install your own ONNX model: choose its .onnx file and its denoise-model.json together. This build offers no model downloads.",
+            );
+        }
     }
     if let Some(job) = downloads.iter().find(|d| d["id"] == "local-install") {
         match job["state"].as_str() {

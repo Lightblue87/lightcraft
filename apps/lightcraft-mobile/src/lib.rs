@@ -555,8 +555,10 @@ fn adapter_limits(options: &mut eframe::NativeOptions) {
     }
 }
 
-/// Runs the app with its library in `library_dir`; returns when the event loop ends.
-pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) -> eframe::Result {
+/// Runs the app with its library in `library_dir` and face and denoise models in `data_dir`
+/// (`models/`, `denoise-models/`, as in the desktop's settings folder); returns when the event
+/// loop ends.
+pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf, data_dir: std::path::PathBuf) -> eframe::Result {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
     adapter_limits(&mut options);
     #[cfg(target_os = "ios")]
@@ -592,7 +594,7 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf) 
             }
             let export_dir = library_dir.with_file_name("LightCraft Exports").to_string_lossy().to_string();
             let _ = PICKED_DIR.set(library_dir.join("Picked"));
-            let mut s = Session::new().with_fs().with_system_clock();
+            let mut s = Session::new().with_fs().with_system_clock().with_models_in(&data_dir);
             let t0 = std::time::Instant::now();
             match s.open_library(&library_dir, true) {
                 Ok(r) => {
@@ -623,11 +625,13 @@ fn control_port() -> Option<u16> {
     v.and_then(|v| v.trim().parse().ok())
 }
 
-/// iOS: `$HOME` is the app container; `Documents/` shows up in the Files app.
+/// iOS: `$HOME` is the app container; `Documents/` shows up in the Files app, so models go in
+/// `Library/Application Support/LightCraft` (as on the Mac), which doesn't.
 #[cfg(target_os = "ios")]
 pub fn ios_main() {
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    if let Err(e) = run(eframe::NativeOptions::default(), home.join("Documents").join("LightCraft Library")) {
+    let data = home.join("Library").join("Application Support").join("LightCraft");
+    if let Err(e) = run(eframe::NativeOptions::default(), home.join("Documents").join("LightCraft Library"), data) {
         log::error!("{e}");
     }
 }
@@ -637,7 +641,8 @@ pub fn ios_main() {
 #[allow(unsafe_code)] // the symbol name is the contract with android-activity
 #[unsafe(no_mangle)]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    let dir = app.internal_data_path().unwrap_or_default().join("LightCraft Library");
+    let data = app.internal_data_path().unwrap_or_default();
+    let dir = data.join("LightCraft Library");
     let _ = ANDROID_APP.set(app.clone());
     // the activity's onTrimMemory, passed on within a second whether or not frames are drawn
     let trims = app.clone();
@@ -657,7 +662,7 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     {
         n.instance_descriptor.backends = eframe::wgpu::Backends::GL;
     }
-    if let Err(e) = run(options, dir) {
+    if let Err(e) = run(options, dir, data) {
         log::error!("{e}");
     }
 }
