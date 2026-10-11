@@ -225,7 +225,7 @@ fn sidebar_sections_collapse_and_remember_it() {
 #[test]
 fn the_rating_pill_pads_its_contents_evenly() {
     let h = demo([1194.0, 834.0], json!({"view": "photoGrid"}));
-    let pill = widget(&h, "pill:rating");
+    let pill = h.view.ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(crate::panels::bottombar::PILL_RECT))).expect("the rating pill is drawn");
     let (first, last) = (widget(&h, "star:bottom:1"), widget(&h, "flag:reject"));
     assert!(last.right() <= pill.right(), "the flags stay inside the pill: {last:?} in {pill:?}");
     // the star glyph fills its button; the flag glyphs sit 3 pt inside theirs

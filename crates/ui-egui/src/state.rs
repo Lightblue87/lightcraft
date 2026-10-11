@@ -283,6 +283,8 @@ pub const GRID_COLUMNS: (u8, u8) = (1, 8);
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct UiState {
+    /// Shared panel arrangement; absent in legacy settings until their first layout.
+    pub docking: Option<crate::docking::Workspace>,
     #[serde(default = "crate::i18n::default_language")]
     pub language: crate::i18n::Locale,
     /// The Build Previews run last announced (its identity, finished?).
@@ -798,6 +800,7 @@ pub struct SyncCounts {
 impl Default for UiState {
     fn default() -> Self {
         UiState {
+            docking: None,
             language: crate::i18n::default_language(),
             preview_build_seen: None,
             unsaved_seen: false,

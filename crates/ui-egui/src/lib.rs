@@ -10,6 +10,7 @@ pub mod album_picker;
 pub mod control;
 pub mod credits;
 pub mod date_picker;
+pub mod docking;
 pub mod export_task;
 pub mod headless;
 pub mod hid;
@@ -442,6 +443,9 @@ impl LightcraftApp {
             return result;
         }
         if let Some(r) = menus::run_ui_command(self, id, &params) {
+            if r.is_ok() {
+                docking::reveal_command(self, id)?;
+            }
             return r;
         }
         let r = self.session.execute(id, &params).map_err(|e| e.to_string());
@@ -1126,36 +1130,29 @@ impl LightcraftApp {
         // right panels and left panel run to the bottom; the bottom bar sits between them).
         if panels::compact::is_compact(&ctx) {
             panels::compact::show(self, ui);
+            let t = theme::Tokens::get(&ctx);
+            let bg = if matches!(
+                self.ui.view,
+                state::ViewMode::Detail | state::ViewMode::Compare | state::ViewMode::Survey | state::ViewMode::Reference
+            ) {
+                t.canvas
+            } else {
+                t.grid_bg
+            };
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(bg)).show(ui, |ui| match self.ui.view {
+                state::ViewMode::PhotoGrid | state::ViewMode::SquareGrid => panels::grid::show(self, ui),
+                state::ViewMode::Detail => panels::detail::show(self, ui),
+                state::ViewMode::Compare => panels::compare::show_compare(self, ui),
+                state::ViewMode::Survey => panels::compare::show_survey(self, ui),
+                state::ViewMode::Reference => panels::compare::show_reference(self, ui),
+                state::ViewMode::People => panels::people::show(self, ui),
+            });
         } else {
             panels::topbar::show(self, ui);
             panels::library_problem::banner(self, ui);
             panels::strip::show(self, ui);
-            if self.ui.right != state::RightPanel::None {
-                panels::right::show(self, ui);
-            }
-            if self.ui.presets {
-                panels::presets::show(self, ui);
-            }
-            if self.ui.left_panel {
-                panels::left::show(self, ui);
-            }
-            panels::bottombar::show(self, ui);
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| docking::show(self, ui));
         }
-        let t = theme::Tokens::get(&ctx);
-        let bg = if matches!(self.ui.view, state::ViewMode::Detail | state::ViewMode::Compare | state::ViewMode::Survey | state::ViewMode::Reference)
-        {
-            t.canvas
-        } else {
-            t.grid_bg
-        };
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(bg)).show(ui, |ui| match self.ui.view {
-            state::ViewMode::PhotoGrid | state::ViewMode::SquareGrid => panels::grid::show(self, ui),
-            state::ViewMode::Detail => panels::detail::show(self, ui),
-            state::ViewMode::Compare => panels::compare::show_compare(self, ui),
-            state::ViewMode::Survey => panels::compare::show_survey(self, ui),
-            state::ViewMode::Reference => panels::compare::show_reference(self, ui),
-            state::ViewMode::People => panels::people::show(self, ui),
-        });
         panels::second::show(self, &ctx);
         panels::notices::show(self, &ctx);
         panels::dialogs::show(self, &ctx);
@@ -1725,3 +1722,6 @@ pub(crate) fn defer_touch_pointer_gone(deferred: &mut bool, raw: &mut egui::RawI
 }
 #[cfg(test)]
 mod tests_model_setup;
+
+#[cfg(test)]
+mod tests_docking_acceptance;

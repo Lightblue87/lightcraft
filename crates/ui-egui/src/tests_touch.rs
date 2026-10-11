@@ -220,7 +220,10 @@ fn the_bottom_bar_groups_never_overlap_on_an_ipad_in_portrait() {
     for _ in 0..3 {
         h.step();
     }
-    let sort = widget(&mut h, "icon:sort");
+    // the left group ends with Sort, or with the one View button that holds the modes and Sort
+    // where the canvas is too narrow for them
+    let id = if h.app.widgets.iter().any(|(w, _)| w == "icon:sort") { "icon:sort" } else { "icon:viewOptions" };
+    let sort = widget(&mut h, id);
     let right: Vec<(String, egui::Rect)> = h
         .app
         .widgets
@@ -233,7 +236,7 @@ fn the_bottom_bar_groups_never_overlap_on_an_ipad_in_portrait() {
         .collect();
     assert!(right.iter().any(|(id, _)| id == "dropdown:zoom"), "the zoom stays: {right:?}");
     for (id, r) in &right {
-        assert!(r.left() >= sort.right(), "{id} {r:?} overlaps Sort {sort:?}");
+        assert!(r.left() >= sort.right(), "{id} {r:?} overlaps the left group {sort:?}");
     }
 }
 

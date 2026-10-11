@@ -107,7 +107,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     if app.ui.left_panel {
         // picking a source (album, folder, date …) closes the drawer onto its photos
         let source = app.session.source;
-        super::left::show(app, ui);
+        // the drawer: the whole region, or a column beside the photos in a wide window
+        let avail = ui.available_rect_before_wrap();
+        let w = if beside(ui.ctx()) { side_width(avail.width()) } else { avail.width() };
+        let r = egui::Panel::left("left_panel").frame(egui::Frame::NONE).resizable(false).exact_size(w).show(ui, |ui| super::left::show(app, ui));
+        register(ui.ctx(), "panel:left_panel", r.response.rect);
         if app.session.source != source {
             app.ui.left_panel = false;
         }
@@ -275,6 +279,7 @@ fn sheet(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if app.ui.presets {
             super::presets::show(app, ui);
         } else {
+            register(ui.ctx(), "panel:right_panel", ui.available_rect_before_wrap());
             super::right::show(app, ui);
         }
     });
