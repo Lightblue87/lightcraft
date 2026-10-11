@@ -972,7 +972,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
     let resp = ui.interact(r, egui::Id::new(("curve", &ch)), Sense::click_and_drag());
     crate::widgets::announce(&resp, crate::i18n::tr("Tone Curve"));
     register(ui.ctx(), "curve", r);
-    resp.context_menu(|ui| curve_reset_menu(app, ui, &ch));
+    crate::menu_level::context_menu(&resp, |ui| curve_reset_menu(app, ui, &ch));
     let p = ui.painter();
     p.rect_filled(r, 2.0, t.canvas);
     if let Some(hist) = preview_histogram(app, id) {
@@ -1313,7 +1313,7 @@ fn curve_footer(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings)
                         ui.close();
                     }
                     if !p.builtin {
-                        r.context_menu(|ui| {
+                        crate::menu_level::context_menu(&r, |ui| {
                             if ui.button(crate::i18n::tr("Delete Preset")).clicked() {
                                 let _ = app.run("curve.deletePreset", json!({"name": p.name}));
                                 ui.close();

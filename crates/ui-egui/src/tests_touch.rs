@@ -557,3 +557,50 @@ fn a_double_tap_on_a_grid_photo_opens_it() {
     assert_eq!(h.app.ui.view, crate::state::ViewMode::Detail, "the second tap opens it");
     assert_eq!(h.app.session.active().map(|p| p.0), Some(id));
 }
+
+/// On an iPhone a long press on a library photo opens its menu, which is taller than the screen:
+/// it stays on screen and a finger scrolls it to its last row, like the menu bar's menus.
+#[test]
+fn a_photo_menu_taller_than_an_iphone_scrolls_with_a_finger() {
+    let services = Services { png: None, ..Default::default() };
+    let mut app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), services);
+    app.ui.view = crate::state::ViewMode::PhotoGrid;
+    let (w, hgt) = (393.0, 852.0);
+    let mut h = Headless::new(app, [w, hgt], 1.0);
+    h.input([egui::Event::Touch {
+        device_id: egui::TouchDeviceId(0),
+        id: egui::TouchId(0),
+        phase: egui::TouchPhase::Cancel,
+        pos: egui::Pos2::ZERO,
+        force: None,
+    }]);
+    h.settle(SETTLE);
+    let (_, r) = h.app.widgets.iter().find(|(w, r)| w.starts_with("thumb:") && r.top() > 100.0).cloned().expect("a photo on screen");
+    // a long press: the finger rests on the photo
+    let at = r.center();
+    let t = |phase| egui::Event::Touch { device_id: egui::TouchDeviceId(1), id: egui::TouchId(1), phase, pos: at, force: None };
+    let button = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    h.input([t(egui::TouchPhase::Start), egui::Event::PointerMoved(at), button(true)]);
+    wait(&mut h, 1.0);
+    h.input([t(egui::TouchPhase::End), button(false), egui::Event::PointerGone]);
+    h.step();
+    h.step();
+    assert!(egui::Popup::is_any_open(&h.view.ctx), "the photo's menu opened");
+    let list = widget(&mut h, "menu-level:1");
+    assert!(list.top() >= 0.0 && list.bottom() <= hgt, "the menu stays on screen: {list:?}");
+    let rows = widget(&mut h, "menu-rows:1");
+    assert!(rows.bottom() > list.bottom() + 20.0, "its rows are taller than the screen: {rows:?} in {list:?}");
+    // a finger drags the rows up until the last one shows
+    for _ in 0..20 {
+        let rows = widget(&mut h, "menu-rows:1");
+        if rows.bottom() <= list.bottom() {
+            break;
+        }
+        let from = egui::pos2(list.center().x, list.bottom() - 60.0);
+        let path: Vec<egui::Pos2> = (1..=8).map(|i| from - egui::vec2(0.0, 40.0 * i as f32)).collect();
+        touch(&mut h, from, &path);
+    }
+    let rows = widget(&mut h, "menu-rows:1");
+    assert!(rows.bottom() <= list.bottom() + 0.5, "the last row scrolled into view: {rows:?} in {list:?}");
+    assert!(egui::Popup::is_any_open(&h.view.ctx), "scrolling doesn't close the menu or pick a row");
+}
