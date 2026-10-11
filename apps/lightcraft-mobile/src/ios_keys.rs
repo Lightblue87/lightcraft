@@ -13,6 +13,12 @@
 //!   ⌘V become egui's copy / cut / paste, and pasting reads the system pasteboard. Text egui
 //!   copies goes to the system pasteboard too ([`after_frame`]).
 //!
+//! A long press (or right-click) on a text field shows the system's edit menu from the text view
+//! ([`show_edit_menu`]) rather than the app's own: only the system's Paste may read what another
+//! app or a Mac (Universal Clipboard) copied, and the app's own was refused ("Operation not
+//! authorized"). Its Cut / Copy / Paste / Select All come back as the text view's standard edit
+//! actions and become egui's clipboard events.
+//!
 //! eframe still makes winit's view the first responder when a text field gains focus
 //! (`set_ime_allowed`); the next frame hands it to [`TextView`].
 //!
@@ -23,13 +29,17 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 
 use objc2::rc::Retained;
-use objc2::runtime::NSObject;
-use objc2::{ClassType, MainThreadOnly, define_class, msg_send};
+use objc2::runtime::{AnyObject, NSObject, ProtocolObject, Sel};
+use objc2::{ClassType, MainThreadOnly, define_class, msg_send, sel};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSObjectProtocol, NSSet, NSString};
-use objc2_ui_kit::{UIKeyInput, UIPasteboard, UIPress, UIPressesEvent, UIResponder, UITextInputTraits, UIView};
+use objc2_ui_kit::{
+    UIEditMenuConfiguration, UIEditMenuInteraction, UIKeyInput, UIPasteboard, UIPress, UIPressesEvent, UIResponder, UIResponderStandardEditActions,
+    UITextInputTraits, UIView,
+};
 
 use lightcraft_ui_egui::hid;
+use lightcraft_ui_egui::text_field::NativeMenuItems;
 
 thread_local! {
     // main thread only: UIKit calls the views there, and the shell's frames run there
@@ -40,6 +50,12 @@ thread_local! {
     // keys whose press the text view handled itself: their release is its too
     static TAKEN: RefCell<HashSet<i64>> = RefCell::new(HashSet::new());
     static CONTEXT: RefCell<Option<egui::Context>> = const { RefCell::new(None) };
+    // the text view's edit menu, and what the field it was shown for offers
+    static EDIT_MENU: RefCell<Option<Retained<UIEditMenuInteraction>>> = const { RefCell::new(None) };
+    static MENU_ITEMS: RefCell<NativeMenuItems> =
+        const { RefCell::new(NativeMenuItems { cut: false, copy: false, select_all: false }) };
+    // where in the text view the menu was shown from
+    static MENU_POINT: RefCell<CGPoint> = const { RefCell::new(CGPoint::new(0.0, 0.0)) };
 }
 
 define_class!(
@@ -111,9 +127,73 @@ define_class!(
         }
     }
 
+    impl TextView {
+        // the edit menu offers what the field can do (Paste: when the pasteboard holds text,
+        // which asking doesn't count as reading it)
+        #[unsafe(method(canPerformAction:withSender:))]
+        fn can_perform_action(&self, action: Sel, _sender: Option<&AnyObject>) -> bool {
+            let items = MENU_ITEMS.with_borrow(|i| *i);
+            if action == sel!(paste:) {
+                // SAFETY: asking the general pasteboard whether it has text, on the main thread
+                unsafe { UIPasteboard::generalPasteboard().hasStrings() }
+            } else if action == sel!(cut:) {
+                items.cut
+            } else if action == sel!(copy:) {
+                items.copy
+            } else if action == sel!(selectAll:) {
+                items.select_all
+            } else {
+                false
+            }
+        }
+    }
+
     unsafe impl NSObjectProtocol for TextView {}
 
     unsafe impl UITextInputTraits for TextView {}
+
+    // the edit menu's choices, sent to the first responder
+    unsafe impl UIResponderStandardEditActions for TextView {
+        #[unsafe(method(cut:))]
+        fn cut(&self, _sender: Option<&AnyObject>) {
+            push(egui::Event::Cut);
+            repaint();
+        }
+
+        #[unsafe(method(copy:))]
+        fn copy(&self, _sender: Option<&AnyObject>) {
+            push(egui::Event::Copy);
+            repaint();
+        }
+
+        // the system's Paste: reading the pasteboard here is allowed
+        #[unsafe(method(paste:))]
+        fn paste(&self, _sender: Option<&AnyObject>) {
+            if let Some(text) = pasteboard_text() {
+                push(egui::Event::Paste(text));
+            }
+            repaint();
+        }
+
+        // as in a system text field the menu comes back, now with Cut and Copy for the selection
+        // (a press on the field to show it again would put the cursor there instead)
+        #[unsafe(method(selectAll:))]
+        fn select_all(&self, _sender: Option<&AnyObject>) {
+            let key = egui::Key::A;
+            for pressed in [true, false] {
+                push(egui::Event::Key { key, physical_key: Some(key), pressed, repeat: false, modifiers: egui::Modifiers::COMMAND });
+            }
+            repaint();
+            let items = MENU_ITEMS.with_borrow_mut(|i| {
+                i.cut = true;
+                i.copy = true;
+                *i
+            });
+            if items.copy {
+                present_edit_menu(self.mtm(), MENU_POINT.with_borrow(|p| *p));
+            }
+        }
+    }
 
     unsafe impl UIKeyInput for TextView {
         #[unsafe(method(hasText))]
@@ -201,9 +281,8 @@ fn queue(mtm: objc2::MainThreadMarker, presses: &NSSet<UIPress>, pressed: bool, 
                 }
             }
             egui::Key::V if clipboard => {
-                // SAFETY: reading the general pasteboard's string, on the main thread
-                if pressed && let Some(text) = unsafe { UIPasteboard::generalPasteboard().string() } {
-                    push(egui::Event::Paste(text.to_string()));
+                if pressed && let Some(text) = pasteboard_text() {
+                    push(egui::Event::Paste(text));
                 }
             }
             _ => push(egui::Event::Key { key: k, physical_key: Some(k), pressed, repeat: false, modifiers }),
@@ -241,6 +320,51 @@ fn tap(key: egui::Key) {
     repaint();
 }
 
+/// The system pasteboard's text (iOS lets an app read another app's only from the system's
+/// Paste: the edit menu's, or ⌘V).
+fn pasteboard_text() -> Option<String> {
+    // SAFETY: reading the general pasteboard's string, on the main thread
+    unsafe { UIPasteboard::generalPasteboard().string() }.map(|t| t.to_string())
+}
+
+/// Shows the system's edit menu for the text field at `field`, from `at` (egui points): the text
+/// view moves over the field and takes the keyboard, so the menu's choices come to it.
+fn show_edit_menu(field: egui::Rect, at: egui::Pos2, items: NativeMenuItems) {
+    let Some(ctx) = CONTEXT.with_borrow(Clone::clone) else { return };
+    // egui points → UIKit points
+    let ppp = ctx.pixels_per_point();
+    let scale = f64::from(ppp / ctx.native_pixels_per_point().filter(|n| *n > 0.0).unwrap_or(ppp));
+    if !scale.is_finite() {
+        return;
+    }
+    MENU_ITEMS.with_borrow_mut(|i| *i = items);
+    TEXT_VIEW.with_borrow(|v| {
+        let Some(view) = v.as_deref() else { return };
+        let frame = CGRect::new(
+            CGPoint::new(f64::from(field.left()) * scale, f64::from(field.top()) * scale),
+            CGSize::new(f64::from(field.width()).max(1.0) * scale, f64::from(field.height()).max(1.0) * scale),
+        );
+        view.setFrame(frame);
+        if !view.isFirstResponder() {
+            view.becomeFirstResponder();
+        }
+        let from = CGPoint::new(f64::from(at.x - field.left()) * scale, f64::from(at.y - field.top()) * scale);
+        MENU_POINT.with_borrow_mut(|p| *p = from);
+        present_edit_menu(view.mtm(), from);
+    });
+}
+
+/// Shows the text view's edit menu from `from` (in the text view).
+fn present_edit_menu(mtm: objc2::MainThreadMarker, from: CGPoint) {
+    EDIT_MENU.with_borrow(|m| {
+        if let Some(menu) = m.as_deref() {
+            // SAFETY: a configuration with no identifier, on the main thread
+            let config = unsafe { UIEditMenuConfiguration::configurationWithIdentifier_sourcePoint(None, from, mtm) };
+            menu.presentEditMenuWithConfiguration(&config);
+        }
+    });
+}
+
 fn push(e: egui::Event) {
     QUEUE.with_borrow_mut(|q| q.push(e));
 }
@@ -268,10 +392,17 @@ pub fn install(handle: raw_window_handle::RawWindowHandle, ctx: &egui::Context) 
     let key: Retained<KeyView> = unsafe { msg_send![KeyView::alloc(mtm), initWithFrame: frame] };
     // SAFETY: as above
     let text: Retained<TextView> = unsafe { msg_send![TextView::alloc(mtm), initWithFrame: frame] };
+    key.setHidden(true);
+    // the text view shows the edit menu, so it is not hidden: it draws nothing, and touches go
+    // through it to winit's view
+    text.setUserInteractionEnabled(false);
     for v in [&**key as &UIView, &**text] {
-        v.setHidden(true);
         parent.addSubview(v);
     }
+    let menu = UIEditMenuInteraction::initWithDelegate(UIEditMenuInteraction::alloc(mtm), None);
+    text.addInteraction(ProtocolObject::from_ref(&*menu));
+    EDIT_MENU.with_borrow_mut(|m| *m = Some(menu));
+    lightcraft_ui_egui::text_field::set_native_menu(ctx, show_edit_menu);
     KEY_VIEW.with_borrow_mut(|v| *v = Some(key));
     TEXT_VIEW.with_borrow_mut(|v| *v = Some(text));
     let _ = (KeyView::class(), TextView::class());
