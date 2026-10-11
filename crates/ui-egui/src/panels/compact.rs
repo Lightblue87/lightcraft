@@ -366,34 +366,18 @@ pub fn dialog_width(ctx: &egui::Context, desktop: f32, margin_x: f32) -> f32 {
 }
 
 /// In the compact layout a dialog window spans the screen (inside the safe area) at a fixed width
-/// and scrolls when it is taller than the screen. Elsewhere `win` is returned unchanged, unless
-/// dialog `key` was taller than the screen when last shown ([`dialog_shown`]; an iPad mini in
-/// landscape is 744 pt tall, less than the Export dialog): then it fills the screen's height and
-/// scrolls.
-pub fn dialog<'a>(ctx: &egui::Context, win: egui::Window<'a>, key: &str) -> egui::Window<'a> {
-    let area = ctx.content_rect().shrink(DIALOG_INSET);
+/// and scrolls when it is taller than the screen; elsewhere `win` is returned unchanged (desktop
+/// dialogs fit the window on their own, #781).
+pub fn dialog<'a>(ctx: &egui::Context, win: egui::Window<'a>) -> egui::Window<'a> {
     if !is_compact(ctx) {
-        let overflowed = ctx.data(|d| d.get_temp::<String>(egui::Id::new(OVERFLOWED))).is_some_and(|k| k == key);
-        if !overflowed {
-            return win;
-        }
-        return win.default_height(area.height()).max_height(area.height()).vscroll(true).constrain_to(area);
+        return win;
     }
+    let area = ctx.content_rect().shrink(DIALOG_INSET);
     // egui's window sizes are its outer size (frame margins included); a phone in landscape gets
     // a dialog of readable width, not one stretched across the screen
     let w = area.width().min(DIALOG_MAX_W);
     // auto-sized: as tall as its contents up to the screen, then it scrolls
     win.auto_sized().min_width(w).max_width(w).max_height(area.height()).vscroll(true).constrain_to(area)
-}
-
-/// Temp data: the key of the dialog last shown taller than the screen.
-const OVERFLOWED: &str = "dialog-overflowed";
-
-/// Record where dialog `key` was drawn (its window's rectangle), for [`dialog`].
-pub fn dialog_shown(ctx: &egui::Context, key: &str, rect: egui::Rect) {
-    if !is_compact(ctx) && rect.height() > ctx.content_rect().shrink(DIALOG_INSET).height() + 0.5 {
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new(OVERFLOWED), key.to_string()));
-    }
 }
 
 /// A labelled row for dialogs: in the compact layout the label sits above its controls, which

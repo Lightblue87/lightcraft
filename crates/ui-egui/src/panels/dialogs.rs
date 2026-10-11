@@ -298,7 +298,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         let window = window.vscroll(false).constrain_to(area).max_size(area.size() - egui::vec2(32.0, 64.0));
         if crate::panels::compact::is_compact(ctx) { window.fixed_size(size) } else { window.default_size(size) }
     } else {
-        crate::panels::compact::dialog(ctx, window, &title)
+        crate::panels::compact::dialog(ctx, window)
     };
     let mut import_pressed = None;
     let shown = window
@@ -691,7 +691,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         ui,
                         "Format",
                         "exportFormat",
-                        &[(F::Jpeg, "JPEG"), (F::Png, "PNG"), (F::Tiff, "TIFF"), (F::Psd, "PSD"), (F::Webp, "WebP"), (F::Avif, "AVIF"), (F::Dng, "DNG"), (F::Original, "Original files")],
+                        &[(F::Jpeg, "JPEG"), (F::Png, "PNG"), (F::Tiff, "TIFF"), (F::Psd, "PSD"), (F::Webp, "WebP"), (F::Avif, "AVIF"), (F::Jxl, "JPEG XL"), (F::Dng, "DNG"), (F::Original, "Original files")],
                         &mut opts.format,
                     );
                     if !opts.format.is_rendered() {
@@ -713,8 +713,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         choices(ui, "Bit depth", "exportBitDepth", depths, &mut bd);
                         opts.bit_depth = Some(bd);
                     }
-                    if matches!(opts.format, F::Jpeg | F::Tiff | F::Avif | F::Png) {
-                        let tip = "Photos edited in HDR: JPEG with an HDR gain map (looks right everywhere, brighter highlights on HDR displays), AVIF as 10-bit and PNG as 16-bit Rec. 2020 PQ; TIFF needs 32-bit float";
+                    if matches!(opts.format, F::Jpeg | F::Tiff | F::Avif | F::Png | F::Jxl) {
+                        let tip = "Photos edited in HDR: JPEG with an HDR gain map (looks right everywhere, brighter highlights on HDR displays), AVIF as 10-bit, PNG and JPEG XL as 16-bit Rec. 2020 PQ; TIFF needs 32-bit float";
                         ui.checkbox(&mut opts.hdr, "HDR output").on_hover_text(tip);
                         if opts.hdr && !opts.hdr_output() {
                             ui.label(egui::RichText::new("HDR TIFF needs 32-bit float.").color(t.text_dim));
@@ -726,6 +726,8 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     } else if opts.format == F::Png && opts.hdr {
                         ui.label(egui::RichText::new("Color space: Rec. 2020 PQ, 16-bit (HDR PNG)").color(t.text_dim))
                             .on_hover_text("Viewers that don't read the PNG cICP chunk show PQ values as sRGB: flat and washed out. For a picture that looks right everywhere, use JPEG (gain map).");
+                    } else if opts.format == F::Jxl && opts.hdr {
+                        ui.label(egui::RichText::new("Color space: Rec. 2020 PQ (HDR JPEG XL)").color(t.text_dim));
                     } else if opts.format == F::Avif {
                         ui.label(egui::RichText::new(crate::i18n::tr("Color space: sRGB (AVIF)")).color(t.text_dim));
                     } else {
@@ -743,12 +745,26 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                             ],
                             &mut opts.color_space,
                         );
+                        if opts.effective_space() != opts.color_space {
+                            let note = "Lossy JPEG XL writes Adobe RGB and ProPhoto as Rec. 2020; choose Lossless to keep them.";
+                            ui.label(egui::RichText::new(crate::i18n::tr(note)).color(t.text_dim));
+                        }
                     }
-                    if matches!(opts.format, F::Jpeg | F::Avif) {
+                    if opts.format == F::Jxl {
+                        let tip = "Mathematically lossless: every pixel is kept exactly (larger files)";
+                        ui.checkbox(&mut opts.jxl_lossless, crate::i18n::tr("Lossless")).on_hover_text(crate::i18n::tr(tip));
+                    }
+                    if matches!(opts.format, F::Jpeg | F::Avif) || (opts.format == F::Jxl && !opts.jxl_lossless) {
                         let mut q = opts.quality as f64;
                         if num(ui, &QUALITY, &mut q) {
                             opts.quality = q as u8;
                         }
+                    }
+                    if opts.format == F::Jxl {
+                        use lightcraft_engine::export::JxlEffort as E;
+                        choices(ui, "Effort", "exportJxlEffort", &[(E::Fast, "Fast"), (E::Normal, "Normal")], &mut opts.jxl_effort);
+                        let tip = "Shows a coarse version first and refines it as the file loads";
+                        ui.checkbox(&mut opts.jxl_progressive, crate::i18n::tr("Progressive")).on_hover_text(crate::i18n::tr(tip));
                     }
                     if opts.format == F::Jpeg {
                         let mut k = *limit_kb as f64;
@@ -917,6 +933,27 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         &[(K::Unique, "Add number"), (K::Overwrite, "Overwrite"), (K::Skip, "Skip")],
                         &mut opts.conflict,
                     );
+                    // After export: Apple Photos imports the files written (macOS only)
+                    #[cfg(target_os = "macos")]
+                    {
+                        let r = ui.checkbox(&mut opts.add_to_photos, crate::i18n::tr("Add to Apple Photos"));
+                        crate::widgets::register(ui.ctx(), "exportAddToPhotos", r.rect);
+                        if opts.add_to_photos {
+                            field(ui, "Album", |ui| {
+                                ui.add(egui::TextEdit::singleline(&mut opts.photos_album).hint_text(crate::i18n::tr("none")).desired_width(f32::INFINITY))
+                            });
+                            ui.label(
+                                egui::RichText::new(crate::i18n::tr("The first time, macOS asks whether LightCraft may control Photos."))
+                                    .size(11.0)
+                                    .color(t.text_dim),
+                            );
+                        }
+                    }
+                    // nowhere to add them: a setting carried over from a Mac is dropped, not refused
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        opts.add_to_photos = false;
+                    }
                     ui.add_space(4.0);
                     field(ui, "Save preset", |ui| {
                         trailing_button_row(ui, |ui| {
@@ -1227,7 +1264,6 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         None => {}
     }
     if let Some(w) = shown {
-        crate::panels::compact::dialog_shown(ctx, &title, w.response.rect);
         ctx.memory_mut(|m| m.set_modal_layer(w.response.layer_id));
         if let Some(body_h) = body_h {
             let measured = (w.response.rect.height() - body_h).max(0.0);
