@@ -16,6 +16,7 @@ The rest of the workspace builds this crate empty. It only has code for `target_
 ```sh
 rustup target add aarch64-apple-ios-sim aarch64-linux-android
 apps/lightcraft-mobile/scripts/ios-sim.sh            # booted simulator, or pass a device name/UDID
+apps/lightcraft-mobile/scripts/ios-device.sh UDID…    # iPhone/iPad: signed, with the icon (see the script for its IOS_* variables)
 apps/lightcraft-mobile/scripts/android-apk.sh --run  # builds the APK; --run installs and starts it via adb
 ```
 
