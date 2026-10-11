@@ -201,7 +201,7 @@ fn settings_fits_an_ipad_screen_with_a_long_library_path() {
     for _ in 0..4 {
         h.step();
     }
-    let rect = h.view.ctx.memory(|m| m.area_rect(egui::Id::new("lightcraft-dialog"))).expect("the dialog is open");
+    let rect = h.app.widgets.iter().find(|(w, _)| w == "dialog:window").map(|(_, r)| *r).expect("the dialog is open");
     assert!(rect.left() >= 0.0 && rect.right() <= 1194.0, "the dialog stays on screen: {rect:?}");
     assert!(rect.width() <= 700.0, "the path doesn't stretch the dialog: {rect:?}");
     let _ = h.app.session.close_library();
@@ -338,7 +338,7 @@ fn the_export_dialog_fits_an_ipad_mini_in_landscape() {
     for _ in 0..4 {
         h.step();
     }
-    let rect = h.view.ctx.memory(|m| m.area_rect(egui::Id::new("lightcraft-dialog"))).expect("the dialog is open");
+    let rect = h.app.widgets.iter().find(|(w, _)| w == "dialog:window").map(|(_, r)| *r).expect("the dialog is open");
     assert!(rect.top() >= 0.0 && rect.bottom() <= 744.0, "the whole dialog is on screen (it scrolls inside): {rect:?}");
 }
 

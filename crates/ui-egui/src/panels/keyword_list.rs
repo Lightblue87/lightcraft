@@ -400,8 +400,14 @@ const MOVE_DEPTH: usize = 8;
 
 /// Create Keyword Tag: inside the keyword picked in the list, else the default parent.
 pub(crate) fn create_dialog(app: &LightcraftApp) -> Dialog {
-    let parent =
-        app.ui.keyword_list_selected.clone().filter(|k| app.session.catalog.has_keyword(k)).or_else(|| app.session.catalog.default_keyword_parent());
+    let picked = app.ui.keyword_list_selected.clone().filter(|k| app.session.catalog.has_keyword(k));
+    create_dialog_inside(app, picked)
+}
+
+/// Create Keyword Tag for a keyword inside `parent`, else inside the default parent (Put New
+/// Keywords Inside This Keyword), else at the top level.
+pub(crate) fn create_dialog_inside(app: &LightcraftApp, parent: Option<String>) -> Dialog {
+    let parent = parent.or_else(|| app.session.catalog.default_keyword_parent());
     let d = KeywordInfo::default();
     Dialog::KeywordTag {
         editing: None,
@@ -414,6 +420,7 @@ pub(crate) fn create_dialog(app: &LightcraftApp) -> Dialog {
         export_synonyms: d.export_synonyms,
         person: d.person,
         add_to_selected: false,
+        reveal: false,
     }
 }
 
@@ -432,6 +439,7 @@ pub(crate) fn edit_dialog(app: &LightcraftApp, path: &str) -> Dialog {
         export_synonyms: info.export_synonyms,
         person: info.person,
         add_to_selected: false,
+        reveal: false,
     }
 }
 

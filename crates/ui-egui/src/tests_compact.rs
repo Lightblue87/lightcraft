@@ -92,8 +92,10 @@ fn desktop_width_keeps_the_side_panels() {
 }
 
 /// The dialog window's rectangle (`panels::dialogs` gives every dialog this id).
+/// The open dialog's window (whichever window id it has: Settings and the import review keep
+/// their own).
 fn dialog_rect(h: &Headless) -> Option<egui::Rect> {
-    h.view.ctx.memory(|m| m.area_rect(egui::Id::new("lightcraft-dialog")))
+    h.app.widgets.iter().find(|(w, _)| w == "dialog:window").map(|(_, r)| *r)
 }
 
 fn open(h: &mut Headless, command: &str) {

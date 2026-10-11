@@ -16,7 +16,9 @@ use lightcraft_raster::{Histogram, Rgb32f, Rgba8};
 
 use crate::ctx::{Buf, FailKind, Gpu, fail};
 use crate::params::{Present, finish_block};
-use crate::render::{Cx, Host, Prep, finish_pass, gaussian, guided_fast, linear, map, masks, pack_taps, profiling, rgb_words, unwritten};
+use crate::render::{
+    Cx, Host, Prep, finish_pass, gaussian, guided_fast, linear, map, masks, median_hv, pack_taps, profiling, rgb_words, tone_base, unwritten,
+};
 
 /// Pixels of a tile's region when tiling only because the output exceeds the device's buffer
 /// limit (the largest that fits, up to this): big tiles overlap less.
@@ -63,6 +65,7 @@ fn region_plan<'p>(tp: &'p TilePlan<'_>, r: Rect) -> Plan<'p> {
         src_long: p.src_long,
         geo: 0,
         lin_key: 0,
+        pre_nr_key: 0,
         eyes,
         // the tiled path places the airlight itself (from the whole frame's samples)
         fixed_air: p.fixed_air,
@@ -135,7 +138,15 @@ fn region_prepare(cx: &mut Cx<'_>, tp: &TilePlan<'_>, grids: &[Option<Grid<'_>>;
         (Some(sg), None) => Some(std::sync::Arc::new(guided_fast(cx, &l, w, h, sg, eps))),
         (None, _) => None,
     };
-    let base = plane(cx, sig.base, &grids[0], local::BASE_EPS);
+    // process V2: the base filters the median of log luminance (local::tone_base)
+    let base = match (sig.base, &grids[0]) {
+        (Some(_), Some(g)) if sig.base_detail > 0 => {
+            let m = median_hv(cx, &l, w, h, sig.base_detail);
+            Some(std::sync::Arc::new(grid_plane(cx, g, &m, r)))
+        }
+        (Some(sg), None) => Some(std::sync::Arc::new(tone_base(cx, &l, w, h, sg, sig.base_detail))),
+        _ => plane(cx, sig.base, &grids[0], local::BASE_EPS),
+    };
     let clarity = plane(cx, sig.clarity, &grids[1], local::CLARITY_EPS);
     let texture = sig.texture.map(|sg| std::sync::Arc::new(gaussian(cx, &l, w, h, 1, sg)));
     let dark = sig.dark.map(|sg| {
@@ -193,17 +204,22 @@ pub(crate) fn render_tiled(
                     map(&mut cx, "dark_k", n, &[], [Some(&lin), None, None], &d0);
                     gaussian(&mut cx, &d0, r.w, r.h, 1, sg)
                 });
+                // process V2's base filters the median of log luminance, taken over the whole region
+                let detail = tp.sig.base_detail;
+                let med = (tp.sig.base.is_some() && detail > 0).then(|| median_hv(&mut cx, &l, r.w, r.h, detail));
                 // only the core's rows are gathered
                 let rows = Rect { y0: c.y0, h: c.h, ..r };
                 let (off, len) = ((c.y0 - r.y0) * r.w, c.h * r.w);
                 let l = cx.slice(&l, off, len);
+                let med = med.map(|m| cx.slice(&m, off, len));
                 let dark = dark.map(|d| cx.slice(&d, off, len));
                 let log_l = cx.read_plane(&l, r.w, c.h);
+                let base_l = med.map(|m| cx.read_plane(&m, r.w, c.h));
                 let dark = dark.map(|d| cx.read_plane(&d, r.w, c.h));
                 if crate::ctx::failed() {
                     return None;
                 }
-                tp.gather(c, rows, &log_l, dark.as_ref());
+                tp.gather(c, rows, &log_l, base_l.as_ref(), dark.as_ref());
             }
             Some(())
         })?;

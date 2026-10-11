@@ -232,7 +232,8 @@ impl<'a> TilePlan<'a> {
             sig.texture.map_or(0, reach),
             sig.chroma.map_or(0, reach),
             sig.dark.map_or(0, reach),
-            guided_reach(sig.base, &grids[0]),
+            // (process V2's base filters the median of log luminance: its radius on top)
+            guided_reach(sig.base, &grids[0]) + if sig.base.is_some() { sig.base_detail } else { 0 },
             guided_reach(sig.clarity, &grids[1]),
             if sky { reach((0.01 * ppl as f32).max(0.5)) } else { 0 },
         ]
@@ -275,10 +276,16 @@ impl<'a> TilePlan<'a> {
         self.grids.iter().any(Option::is_some) || self.sig.dark.is_some()
     }
 
-    /// Pass A, core `c` (in region `r`): its log luminance and, with dehaze, its blurred dark
-    /// channel (both over `r`, exact within the core).
-    pub fn gather(&mut self, c: Rect, r: Rect, log_l: &Plane, dark: Option<&Plane>) {
-        for g in self.grids.iter_mut().flatten() {
+    /// Pass A, core `c` (in region `r`): its log luminance, what the highlights/shadows base
+    /// filters (`base_l`: process V2's median of it, [`local::median_hv`]; `None`: the log
+    /// luminance itself) and, with dehaze, its blurred dark channel (all over `r`, exact within
+    /// the core).
+    pub fn gather(&mut self, c: Rect, r: Rect, log_l: &Plane, base_l: Option<&Plane>, dark: Option<&Plane>) {
+        let [base, clarity] = &mut self.grids;
+        if let Some(g) = base {
+            g.add(base_l.unwrap_or(log_l), (r.x0, r.y0), c);
+        }
+        if let Some(g) = clarity {
             g.add(log_l, (r.x0, r.y0), c);
         }
         if let Some(d) = dark {
@@ -389,8 +396,9 @@ pub fn render_tiled(src: &Rgb32f, info: &SourceInfo, s: &DevelopSettings, req: &
             let r = tp.region(c);
             let img = tp.lin(src, info, r);
             let log_l = img.map(log_lum);
+            let base_l = (sig.base.is_some() && sig.base_detail > 0).then(|| local::median_hv(&log_l, sig.base_detail));
             let dark = sig.dark.map(|sg| gaussian(&img.map(dark_of), sg));
-            tp.gather(c, r, &log_l, dark.as_ref());
+            tp.gather(c, r, &log_l, base_l.as_ref(), dark.as_ref());
         }
         tp.solve();
     }
@@ -416,7 +424,15 @@ pub fn render_tiled(src: &Rgb32f, info: &SourceInfo, s: &DevelopSettings, req: &
             (Some(sg), None) => Some(crop(&guided_fast(&log_l, sg, eps))),
             (None, _) => None,
         };
-        let base = plane(sig.base, false, BASE_EPS).unwrap_or_else(|| Arc::new(core_l.clone()));
+        // process V2: the base filters the median of log luminance (local::tone_base)
+        let base = match (sig.base, tp.grid(false)) {
+            (Some(_), Some(g)) if sig.base_detail > 0 => {
+                Some(Arc::new(g.apply(&local::median_hv(&log_l, sig.base_detail).crop(cx, cy, c.w, c.h), c)))
+            }
+            (Some(sg), None) => Some(crop(&local::tone_base(&log_l, sg, sig.base_detail))),
+            _ => plane(sig.base, false, BASE_EPS),
+        }
+        .unwrap_or_else(|| Arc::new(core_l.clone()));
         let clarity_blur = plane(sig.clarity, true, CLARITY_EPS);
         let texture_blur = sig.texture.map(|sg| crop(&gaussian(&log_l, sg)));
         let dark = sig.dark.map(|sg| crop(&gaussian(&img.map(dark_of), sg)));
