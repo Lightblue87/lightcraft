@@ -220,20 +220,6 @@ fn sidebar_sections_collapse_and_remember_it() {
     assert!(!h.app.ui.sidebar_section_collapsed("albums"), "the plus does not fold Albums");
 }
 
-/// The bottom bar's rating pill holds its stars and flags with even room on both sides (it was
-/// narrower than its contents, so the last flag touched its right edge).
-#[test]
-fn the_rating_pill_pads_its_contents_evenly() {
-    let h = demo([1194.0, 834.0], json!({"view": "photoGrid"}));
-    let pill = h.view.ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(crate::panels::bottombar::PILL_RECT))).expect("the rating pill is drawn");
-    let (first, last) = (widget(&h, "star:bottom:1"), widget(&h, "flag:reject"));
-    assert!(last.right() <= pill.right(), "the flags stay inside the pill: {last:?} in {pill:?}");
-    // the star glyph fills its button; the flag glyphs sit 3 pt inside theirs
-    let left = first.left() - pill.left();
-    let right = pill.right() - (last.right() - 3.0);
-    assert!((left - right).abs() <= 0.5, "even padding: {left} left, {right} right");
-}
-
 /// The tool rail's bottom icons keep the top icons' margin and spacing (a fixed 96 pt box left a
 /// wider gap under Info).
 #[test]

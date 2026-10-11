@@ -217,7 +217,12 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                     if crate::widgets::icon_button(ui, "wbPicker", Icon::Picker, vec2(28.0, 28.0), active, true, "White Balance Selector (W)")
                         .clicked()
                     {
-                        app.ui.tool = if active { String::new() } else { "wbPicker".into() };
+                        if active {
+                            app.ui.tool.clear();
+                        } else if let Err(e) = app.run("tool.wbPicker", json!({})) {
+                            // the same as W: from Compare, Survey or the grid it opens the photo in Detail
+                            app.toast(ui.ctx(), e);
+                        }
                     }
                 });
             });
@@ -564,45 +569,23 @@ fn histogram(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     // EXIF strip
     if let Some(ph) = app.session.catalog.photo(id) {
         let m = &ph.meta;
-        let items = [
-            m.iso.map(|i| format!("ISO {i}")).unwrap_or_default(),
-            m.focal_mm.map(|f| format!("{f:.0}mm")).unwrap_or_default(),
-            m.aperture.map(|a| format!("f/{a:.1}")).unwrap_or_default(),
-            m.shutter.clone(),
-        ];
-        // spread across the row by their widths (fixed slots overlapped on a narrow panel, e.g.
-        // "ISO 3200" ran into "135mm" on an iPad), smaller type when even that doesn't fit
-        let y = r.bottom() - 13.0;
-        let avail = r.width() - 36.0;
-        let layout = |size: f32| -> Vec<std::sync::Arc<egui::Galley>> {
-            items.iter().map(|s| p.layout_no_wrap(s.clone(), t.font(size), t.text_label)).collect()
-        };
-        let width = |g: &[std::sync::Arc<egui::Galley>]| g.iter().map(|g| g.size().x).sum::<f32>();
-        let mut galleys = layout(12.5);
-        if width(&galleys) + 3.0 * 8.0 > avail {
-            galleys = layout((12.5 * (avail - 24.0) / width(&galleys).max(1.0)).clamp(9.0, 12.5));
-        }
-        let xs = spread(&galleys.iter().map(|g| g.size().x).collect::<Vec<_>>(), avail);
-        for (g, x) in galleys.into_iter().zip(xs) {
-            p.galley(pos2(r.left() + 18.0 + x, y - g.size().y / 2.0), g, t.text_label);
+        let parts: Vec<String> = [
+            m.iso.map(|i| format!("ISO {i}")),
+            m.focal_mm.map(|f| format!("{f:.0}mm")),
+            m.aperture.map(|a| format!("f/{a:.1}")),
+            if m.shutter.is_empty() { None } else { Some(m.shutter.clone()) },
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        if !parts.is_empty() {
+            let text = parts.join(" · ");
+            let y = r.bottom() - 13.0;
+            let x = r.left() + r.width() / 2.0;
+            p.text(pos2(x, y), Align2::CENTER_CENTER, text, t.font(12.5), t.text_label);
         }
     }
-}
-
-/// Left edges of items `widths` wide spread across `avail`: the first at 0, the last ending at
-/// `avail`, equal gaps between (at least 4 when they don't fit).
-fn spread(widths: &[f32], avail: f32) -> Vec<f32> {
-    let gaps = widths.len().saturating_sub(1).max(1) as f32;
-    let gap = ((avail - widths.iter().sum::<f32>()) / gaps).max(4.0);
-    let mut x = 0.0;
-    widths
-        .iter()
-        .map(|w| {
-            let at = x;
-            x += w + gap;
-            at
-        })
-        .collect()
 }
 
 // ------------------------------------------------------------------------------ soft proofing
@@ -1371,22 +1354,4 @@ fn quick_develop(app: &mut LightcraftApp, ui: &mut egui::Ui, n: usize) {
             }
         });
     });
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn exif_items_spread_without_overlapping() {
-        // "ISO 3200", "135mm", "f/8.0", "1/250" on a narrow panel
-        let w = [52.0, 40.0, 30.0, 34.0];
-        let xs = super::spread(&w, 240.0);
-        assert_eq!(xs[0], 0.0);
-        assert!((xs[3] + w[3] - 240.0).abs() < 1e-3, "the last ends at the right edge: {xs:?}");
-        for i in 1..4 {
-            assert!(xs[i] >= xs[i - 1] + w[i - 1] + 4.0, "item {i} clears the one before: {xs:?}");
-        }
-        // too wide: they still don't overlap
-        let xs = super::spread(&[100.0, 100.0], 150.0);
-        assert!(xs[1] >= 104.0);
-    }
 }

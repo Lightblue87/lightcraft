@@ -90,21 +90,9 @@ pub fn select_mode_button(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Temp data: where the rating/flag pill was drawn last frame.
-pub(crate) const PILL_RECT: &str = "bottombar-pill-rect";
-
-/// The rating/flag pill's parts: five stars, a gap, three flag buttons, `PILL_GAP` apart.
-const STAR: f32 = 19.0;
-const FLAG: f32 = 22.0;
-const PILL_GAP: f32 = 3.0;
-const GROUP_GAP: f32 = 6.0;
-/// Space between the pill's edge and its first / last button. The right side is 3 pt less: the
-/// flag glyphs sit 3 pt inside their buttons and the stars hardly any, so the visible gaps match.
-const PILL_PAD: f32 = 12.0;
-const PILL_PAD_R: f32 = PILL_PAD - 3.0;
-/// Width of the pill: its contents plus the padding (it was a fixed 196 pt, narrower than its
-/// contents, so the last flag touched the edge).
-const PILL_W: f32 = PILL_PAD + 5.0 * STAR + 5.0 * PILL_GAP + GROUP_GAP + 3.0 * FLAG + 2.0 * PILL_GAP + PILL_PAD_R;
+/// Five 19-point stars, three 22-point flags, seven 3-point gaps, a 6-point group gap
+/// and 10-point padding at both ends.
+const PILL_W: f32 = 208.0;
 
 /// The rating/flag pill and copy/paste settings, between `from` and `to` (the side groups): the
 /// copy buttons go first when there is no room (they are in the Edit menu too), then the pill.
@@ -125,21 +113,19 @@ fn centre(app: &mut LightcraftApp, ui: &mut egui::Ui, full: Rect, from: f32, to:
     let active = app.session.active().and_then(|id| app.session.catalog.photo(id).cloned());
     let pill = Rect::from_min_size(pos2(left, full.center().y - 15.0), vec2(PILL_W, 30.0));
     ui.painter().rect_filled(pill, 15.0, t.canvas);
-    // (kept for tests, not registered: the stars and flags inside it are the controls)
-    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(PILL_RECT), pill));
-    let inner = Rect::from_min_max(pos2(pill.left() + PILL_PAD, pill.top() + 4.0), pos2(pill.right() - PILL_PAD_R, pill.bottom() - 4.0));
-    let mut pill_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Center)));
-    pill_ui.spacing_mut().item_spacing.x = PILL_GAP;
+    let mut pill_ui =
+        ui.new_child(egui::UiBuilder::new().max_rect(pill.shrink2(vec2(10.0, 4.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    pill_ui.spacing_mut().item_spacing.x = 3.0;
     let rating = active.as_ref().map(|p| p.rating).unwrap_or(0);
-    if let Some(r) = stars(&mut pill_ui, "bottom", rating, STAR) {
+    if let Some(r) = stars(&mut pill_ui, "bottom", rating, 19.0) {
         let mut params = json!({"rating": r});
         crate::panels::compare::target_active(app, &mut params);
         let _ = app.run("photo.rate", params);
     }
-    pill_ui.add_space(GROUP_GAP);
+    pill_ui.add_space(6.0);
     let flag = active.as_ref().map(|p| p.flag).unwrap_or_default();
     for (id, icon, f) in [("unflag", Icon::Circle, Flag::None), ("pick", Icon::FlagPick, Flag::Pick), ("reject", Icon::FlagReject, Flag::Reject)] {
-        let (r, resp) = pill_ui.allocate_exact_size(vec2(FLAG, FLAG), Sense::click());
+        let (r, resp) = pill_ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
         register(pill_ui.ctx(), format!("flag:{id}"), r);
         let on = flag == f && f != Flag::None;
         let c = if on {
@@ -488,6 +474,50 @@ mod visual_regressions {
             harness.key_press(egui::Key::Space);
             harness.run_steps(3);
             assert_eq!(harness.state().ui.view, ViewMode::People, "keyboard activation dispatches the view command");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Services;
+    use crate::headless::HeadlessView;
+
+    #[test]
+    fn rating_and_flag_buttons_keep_padding_inside_the_pill() {
+        for scale in [1.0, 2.0] {
+            for room in [240.0, 500.0] {
+                let mut app = LightcraftApp::new(lightcraft_engine::Session::new(), Services::default());
+                let mut view = HeadlessView::new();
+                for frame in 0..3 {
+                    let raw = HeadlessView::raw_input(vec2(700.0, 40.0), scale, frame as f64 / 60.0, vec![]);
+                    view.run(raw, |ui| {
+                        let full = ui.max_rect();
+                        centre(&mut app, ui, full, 20.0, 20.0 + room);
+                    });
+                    let widgets = crate::widgets::take_registry(&view.ctx);
+                    let star = widgets.iter().find(|(id, _)| id == "star:bottom:1").unwrap().1;
+                    let pill = view
+                        .shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Rect(rect) if rect.rect.contains(star.center()) && rect.rect.height() == 30.0 => Some(rect.rect),
+                            _ => None,
+                        })
+                        .unwrap();
+                    let inner = pill.shrink2(vec2(10.0, 4.0));
+                    for (id, rect) in &widgets {
+                        if id.starts_with("star:bottom:") || id.starts_with("flag:") {
+                            assert!(inner.contains_rect(*rect), "{id} {rect:?} exceeds the pill's padded bounds {inner:?} at scale {scale}");
+                        }
+                    }
+                    assert!(pill.left() >= 20.0 && pill.right() <= 20.0 + room);
+                    if let Some((_, copy)) = widgets.iter().find(|(id, _)| id == "button:copySettings") {
+                        assert!(copy.left() >= pill.right() + 10.0);
+                    }
+                }
+            }
         }
     }
 }
