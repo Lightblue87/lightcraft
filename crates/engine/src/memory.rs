@@ -34,7 +34,7 @@ pub fn default_budget() -> usize {
 }
 
 /// Physical memory (bytes), when the platform tells us without native calls.
-fn total_ram() -> Option<usize> {
+pub(crate) fn total_ram() -> Option<usize> {
     // (Android is `target_os = "android"`, not "linux", and has /proc/meminfo too)
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
