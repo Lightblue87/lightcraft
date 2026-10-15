@@ -3380,7 +3380,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-mobile"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "block2 0.6.2",
  "eframe",
