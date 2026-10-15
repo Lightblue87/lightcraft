@@ -217,7 +217,7 @@ impl<'a> TilePlan<'a> {
         let sig = local::plane_sigmas(s, ppl, req.quality);
         // halos: the scene-linear stage (defringe, then noise reduction: a guided filter of
         // luminance, two Gaussians deep, then a chroma blur), and the planes and masks from it
-        let (nr_l, nr_c) = local::nr_params(s, plan.src_long, gw.max(gh));
+        let (nr_l, nr_c) = local::nr_params(s, plan.detail_scale);
         let halo_lin =
             optics::defringe_reach(s, ppl / optics::DEFRINGE_REF_LONG) + nr_l.map_or(0, |n| 2 * reach(n.sigma)) + nr_c.map_or(0, |n| reach(n.sigma));
         let grids: [Option<LoGrid>; 2] =
@@ -327,7 +327,7 @@ impl<'a> TilePlan<'a> {
         local::white_balance(&mut img, info, s);
         optics::defringe(&mut img, s, plan.px_per_long / optics::DEFRINGE_REF_LONG);
         redeye::apply_at(&mut img, &plan.eyes, r.x0, r.y0);
-        local::denoise(&mut img, s, plan.src_long, self.gw.max(self.gh));
+        local::denoise(&mut img, s, plan.detail_scale);
         img
     }
 }

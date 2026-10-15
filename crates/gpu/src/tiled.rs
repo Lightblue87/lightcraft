@@ -63,6 +63,7 @@ fn region_plan<'p>(tp: &'p TilePlan<'_>, r: Rect) -> Plan<'p> {
         h: r.h,
         px_per_long: p.px_per_long,
         src_long: p.src_long,
+        detail_scale: p.detail_scale,
         geo: 0,
         lin_key: 0,
         pre_nr_key: 0,

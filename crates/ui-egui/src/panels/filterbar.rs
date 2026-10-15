@@ -2,7 +2,7 @@
 //! edited state and camera / lens / keyword pickers — every control drives `library.filter`.
 //! "Save as Smart Album…" keeps the current view as a live album; "Clear" resets the filter.
 
-use egui::{Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
+use egui::{Color32, Rect, Sense, Stroke, StrokeKind, vec2};
 use lightcraft_catalog::{ColorLabel, Flag, MediaKind, RatingOp};
 use serde_json::{Value, json};
 
@@ -36,6 +36,7 @@ fn caption(ui: &mut egui::Ui, text: &str) {
 fn toggle(ui: &mut egui::Ui, id: &str, on: bool, tip: &str, draw: impl FnOnce(&egui::Painter, Rect, Color32)) -> egui::Response {
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
+    crate::widgets::announce_selected(&resp, crate::i18n::tr(tip), on);
     register(ui.ctx(), format!("filter:{id}"), r);
     let p = ui.painter();
     if on {
@@ -155,6 +156,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         );
         for i in 1..=5u8 {
             let (r, resp) = ui.allocate_exact_size(vec2(17.0, 26.0), Sense::click());
+            crate::widgets::announce(&resp, format!("{i} ★"));
             register(ui.ctx(), format!("filter:star{i}"), r);
             let filled = i <= f.rating;
             let c = if filled {
@@ -309,14 +311,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         let _ = app.run("library.clearFilter", json!({}));
     }
     // filter presets: apply one, save the current filter, delete
-    // (the UI font has no "▾": a painted chevron, as `widgets::dropdown` draws it)
-    let presets = ui.button(egui::RichText::new(format!("{}    ", crate::i18n::tr("Presets"))).font(t.font(12.5)));
-    paint(
-        ui.painter(),
-        Rect::from_center_size(pos2(presets.rect.right() - 12.0, presets.rect.center().y + 1.0), vec2(12.0, 12.0)),
-        Icon::ChevronDown,
-        t.text_label,
-    );
+    let presets = crate::widgets::dropdown(ui, "filterPresets", crate::i18n::tr("Presets"), t.font(12.5), t.text);
     register(ui.ctx(), "button:filterPresets", presets.rect);
     egui::Popup::menu(&presets).show(|ui| {
         let names: Vec<String> = app.session.filter_presets.iter().map(|f| f.name.clone()).collect();

@@ -108,19 +108,41 @@ fn a_trackpad_on_a_touch_screen_still_drags_photos() {
     h.step();
 }
 
-/// Full screen and slideshows end with Esc and pause with Space; a finger gets Exit and Pause.
+/// Full screen ends with Esc and a slideshow pauses with Space; a finger gets Exit in full screen,
+/// and in a slideshow a tap brings up its controls (Pause, End).
 #[test]
 fn full_screen_and_slideshows_have_exit_and_pause_on_a_touch_screen() {
     let mut h = touch_app(ViewMode::Detail, [834.0, 1194.0]);
+    h.app.run("view.fullScreenPreview", json!({})).unwrap();
+    h.step();
+    h.step();
+    let exit = widget(&h, "button:fullscreenExit").expect("Exit on screen");
+    tap(&mut h, exit.center());
+    assert!(!h.app.ui.fullscreen, "Exit leaves full screen");
     h.app.run("view.slideshow", json!({})).unwrap();
     h.step();
     h.step();
-    let pause = widget(&h, "button:slideshowPause").expect("Pause on screen");
-    tap(&mut h, pause.center());
-    assert!(h.app.ui.slideshow.is_some_and(|(_, _, paused)| paused), "paused");
-    let exit = widget(&h, "button:fullscreenExit").expect("Exit on screen");
-    tap(&mut h, exit.center());
-    assert!(!h.app.ui.fullscreen && h.app.ui.slideshow.is_none());
+    assert!(widget(&h, "button:fullscreenExit").is_none(), "the slideshow has its own controls");
+    // a tap shows them (within their few seconds on screen)
+    let c = egui::pos2(417.0, 597.0);
+    h.input([finger(egui::TouchPhase::Start, c, 1), egui::Event::PointerMoved(c), button(c, true)]);
+    h.step();
+    h.input([finger(egui::TouchPhase::End, c, 1), button(c, false)]);
+    h.step();
+    let pause = widget(&h, "icon:slideshowPlayPause").expect("Pause on screen after a tap");
+    let p = pause.center();
+    h.input([finger(egui::TouchPhase::Start, p, 1), egui::Event::PointerMoved(p), button(p, true)]);
+    h.step();
+    h.input([finger(egui::TouchPhase::End, p, 1), button(p, false)]);
+    h.step();
+    assert!(h.app.ui.slideshow.as_ref().is_some_and(|r| r.play.is_paused()), "paused");
+    let end = widget(&h, "icon:slideshowEnd").expect("End on screen");
+    let e = end.center();
+    h.input([finger(egui::TouchPhase::Start, e, 1), egui::Event::PointerMoved(e), button(e, true)]);
+    h.step();
+    h.input([finger(egui::TouchPhase::End, e, 1), button(e, false)]);
+    h.step();
+    assert!(h.app.ui.slideshow.is_none(), "ended");
 }
 
 /// A section's on/off eye shows on hover with a mouse; on a touch screen it's always there.

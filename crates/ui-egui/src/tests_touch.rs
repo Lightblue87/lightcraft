@@ -366,15 +366,17 @@ fn pencil_pressure_sizes_the_brush_and_a_finger_paints_evenly() {
     h.step();
     let d = develop(&h);
     let MaskShape::Brush { strokes } = &d.masks[0].components[0].shape else { panic!("a brush mask: {:?}", d.masks) };
-    assert!(strokes.len() >= 2, "light and firm parts: {strokes:?}");
-    assert!(strokes[0].size < strokes[strokes.len() - 1].size, "the firm part is wider: {strokes:?}");
+    assert_eq!(strokes.len(), 1, "{strokes:?}");
+    let p = &strokes[0].pressure;
+    assert_eq!(p.len(), strokes[0].points.len(), "a pressure per point: {strokes:?}");
+    assert!(p[0] < 0.5 && p[p.len() - 1] > 0.9, "light, then firm: {p:?}");
     assert_eq!(h.app.session.undo.len(), undo_before + 1, "one undo step for the stroke");
-    // a finger has no pressure: one stroke at the brush's size
+    // a finger has no pressure: the stroke paints evenly
     touch(&mut h, at(0.2), &[at(0.3), at(0.4)]);
     let d = develop(&h);
     let MaskShape::Brush { strokes: after } = &d.masks[0].components[0].shape else { panic!() };
     assert_eq!(after.len(), strokes.len() + 1);
-    assert!((after[after.len() - 1].size - h.app.ui.brush_size as f64).abs() < 1e-6, "{after:?}");
+    assert!(after[after.len() - 1].pressure.is_empty(), "{after:?}");
     h.settle(SETTLE);
 }
 
@@ -419,8 +421,10 @@ fn pencil_pressure_survives_frames_without_touch_events_and_a_zero_first_contact
     h.step();
     let d = develop(&h);
     let MaskShape::Brush { strokes } = &d.masks[0].components[0].shape else { panic!("a brush mask: {:?}", d.masks) };
-    assert!(strokes.len() >= 2, "light and firm parts: {strokes:?}");
-    assert!(strokes[0].size < strokes[strokes.len() - 1].size, "the firm part is wider: {strokes:?}");
+    let p = &strokes[0].pressure;
+    assert_eq!(p.len(), strokes[0].points.len(), "every point has a pressure, redraws included: {strokes:?}");
+    assert!(p.iter().all(|&f| f > 0.0), "the zero first contact counts as no reading: {p:?}");
+    assert!(p[0] < 0.5 && p[p.len() - 1] > 0.9, "light, then firm: {p:?}");
     h.settle(SETTLE);
 }
 

@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (iOS / Android shells: Apple Pencil pressure, touch screens; earlier: monitor profile from colord on Linux); previously major (created from the code, gpu-pipeline.md and the parity checklist) · **Target:** Adobe Lightroom Classic 15.5 / Lightroom 9.6
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-15 · **Change:** minor (iOS / Android shells: Apple Pencil, touch screens; earlier: pen pressure for brush masks; monitor profile from colord on Linux); previously major (created from the code, gpu-pipeline.md and the parity checklist) · **Target:** Adobe Lightroom Classic 15.5 / Lightroom 9.6
 
 What Lightroom does with the machine's hardware, per platform, and what LightCraft does. Sources:
 [gpu-pipeline.md](gpu-pipeline.md), [display-profiles.md](display-profiles.md), [denoise.md](denoise.md),
@@ -15,7 +15,7 @@ What Lightroom does with the machine's hardware, per platform, and what LightCra
 | HDR (EDR) display | ✅ (macOS EDR, Windows HDR) | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ (LR-VIEW-HDR-DISPLAY) |
 | Monitor profile | automatic per display, follows the window | ✅ the screen's profile, followed across screens | 🟡 picked by hand (WCS needs FFI) | 🟡 colord's profile (one display, or all sharing one); no follow across monitors | — | 🟡 Windows OS profile not read; Linux per-monitor follow missing |
 | Second window / second monitor | ✅ (Classic) | ✅ (⌘F11) | ✅ | ✅ | — | ✅ (Classic secondary-window keys missing) |
-| Pen pressure / tilt (brush masks) | ✅ pressure for size / flow | ⬜ | ⬜ | ⬜ | ⬜ | 🟡 Apple Pencil pressure sizes the brush and a double tap swaps Add / Erase on iPad (`ios_pencil.rs`); no desktop tablets, no tilt |
+| Pen pressure / tilt (brush masks) | ✅ pressure for size / flow | ⬜ winit reports no tablet pressure on macOS | 🟡 pen force from winit touch events (untested on a tablet) | ⬜ winit has no X11 / Wayland tablet input | 🟡 pointer-event force where winit passes it | 🟡 brush size and flow follow pen pressure wherever egui gets a touch force (Brush ▸ Pen Pressure); no tilt; macOS / Linux tablets wait on winit; on iPad (iOS shell) the Apple Pencil too, whose double tap swaps Add / Erase |
 | Touch screens (phones, tablets) | Lightroom mobile apps | — | — | — | — | 🟡 iOS / iPadOS and Android: compact phone layout, finger-sized controls, swipe, touch scrolling, soft keyboards, iPad keyboard and trackpad (`apps/lightcraft-mobile`); not packaged or released |
 | Trackpad gestures | pinch zoom, pan | ✅ pinch, two-finger pan | 🟡 (winit) | 🟡 | 🟡 | ✅ on macOS |
 | Card readers / cameras as import sources | ✅ (devices panel, eject after import) | ✅ mounted volumes with DCIM | ✅ | ✅ | — | 🟡 no eject-after-import check, no MTP / PTP phones |
@@ -40,7 +40,7 @@ NVIDIA, Intel and Windows DX12 still rely on user reports.
 |---|---:|---|
 | HDR display (EDR on macOS, Windows HDR, Linux where possible) | 10–20 | an HDR display to verify (human) |
 | OS monitor profile: Windows WCS (an FFI helper crate, like `crates/sysmem`), follow the window across displays on Linux | 4–8 | multi-monitor setup |
-| Pen pressure for brush masks on desktop tablets (winit tablet events or a pure-Rust tablet layer; iPad Pencil done) | 6–12 | a tablet |
+| Pen pressure for brush masks: done where winit reports a touch force; macOS and Linux tablets need winit tablet events (or a pure-Rust tablet layer) | 3–8 | a tablet |
 | Remaining stages on GPU (defringe, spot removal, masks) | 10–20 | |
 | Tethered capture (PTP over USB in pure Rust, Canon / Nikon / Sony first) | 25–45 | cameras (human) |
 | Printing with colour management | 15–25 | printers (human) |
@@ -53,4 +53,5 @@ NVIDIA, Intel and Windows DX12 still rely on user reports.
 |---|---|---|
 | 2026-10-12 | minor | Monitor profile: Linux reads the display profile from colord; macOS row reflects #787 |
 | 2026-10-12 | minor | CPU ↔ GPU equivalence suite run on an AMD Radeon 8060S (Vulkan, RADV, Linux): 16 tests / 135 cases pass, max 2 LSB, mean ≤ 0.0003; first GPU verified outside Apple |
+| 2026-10-12 | minor | Pen pressure: strokes record per-point pressure from egui touch force, scaling dab size and flow; per-platform status |
 | 2026-10-10 | major | Created |
