@@ -74,7 +74,7 @@ public class LightCraftActivity extends NativeActivity {
                 intent.setType("image/*");
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             }
-            startActivityForResult(intent, PICK);
+            start(intent, PICK);
             }
         });
     }
@@ -94,16 +94,29 @@ public class LightCraftActivity extends NativeActivity {
                 Intent intent;
                 if (kind == 2) {
                     intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                    startActivityForResult(intent, TREE);
+                    start(intent, TREE);
                 } else {
                     intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
                     intent.setType("*/*");
                     intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, kind == 0);
-                    startActivityForResult(intent, DOCS);
+                    start(intent, DOCS);
                 }
             }
         });
+    }
+
+    /**
+     * Start a picker for {@code request}. A device without one (some Android Go and TV builds,
+     * restricted profiles) answers as a cancelled pick does, so the shell stops waiting.
+     */
+    private void start(Intent intent, int request) {
+        try {
+            startActivityForResult(intent, request);
+        } catch (android.content.ActivityNotFoundException | SecurityException e) {
+            android.util.Log.w("LightCraft", "no picker for " + intent.getAction() + ": " + e);
+            onActivityResult(request, RESULT_CANCELED, null);
+        }
     }
 
     /** The paths of one finished document pick (empty when cancelled), or null; oldest first. */
