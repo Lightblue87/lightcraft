@@ -460,7 +460,8 @@ mod tests {
             Some(Dialog::DenoiseModel { info, .. }) => assert_eq!(info["model"]["id"], "test-smoothing", "{info}"),
             other => panic!("the model's terms are shown: {other:?}"),
         }
-        assert!(model.with_file_name("denoise-model.json").is_file(), "the manifest is put beside the model");
+        // the pair is linked into a folder of its own: the picked copies stay as they are
+        assert!(!model.with_file_name("denoise-model.json").exists() && manifest.is_file(), "the picked files are left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
