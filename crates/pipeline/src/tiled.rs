@@ -408,7 +408,9 @@ pub fn render_tiled(src: &Rgb32f, info: &SourceInfo, s: &DevelopSettings, req: &
     let deep_depth = req.depth != OutputDepth::U8;
     let mut image = Rgba8::new(gw, gh);
     let mut deep = deep_depth.then(|| match req.depth {
-        OutputDepth::F32Linear => DeepSamples::F32(vec![0.0; gw * gh * 3]),
+        // float for both float depths (finish_deep returns F32 for each): a U16 buffer took no
+        // HDR tile, and an HDR export came out black
+        OutputDepth::F32Linear | OutputDepth::F32Hdr => DeepSamples::F32(vec![0.0; gw * gh * 3]),
         _ => DeepSamples::U16(vec![0; gw * gh * 3]),
     });
     let ev = s.light.exposure as f32;

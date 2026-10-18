@@ -145,7 +145,10 @@ fn tiled_matches_whole_render_in_every_orientation() {
 fn tiled_deep_output_matches() {
     let src = source();
     let s = &cases()[1].1;
-    for depth in [OutputDepth::U16, OutputDepth::F32Linear] {
+    // (F32Hdr: an HDR export over the working cap, with HDR on and off)
+    let mut hdr = s.clone();
+    hdr.hdr.enabled = true;
+    for (depth, s) in [(OutputDepth::U16, s), (OutputDepth::F32Linear, s), (OutputDepth::F32Hdr, s), (OutputDepth::F32Hdr, &hdr)] {
         let req = RenderRequest { depth, ..RenderRequest::fit(W, H) };
         let whole = render(&src, &SourceInfo::default(), s, &req).deep.expect("deep");
         let tiled = render_tiled(&src, &SourceInfo::default(), s, &req, &TileOptions { core: Some(100), ..Default::default() })
@@ -157,8 +160,9 @@ fn tiled_deep_output_matches() {
                 assert!(d <= 256, "u16 differs by {d}");
             }
             (DeepSamples::F32(a), DeepSamples::F32(b)) => {
+                assert!(b.iter().any(|v| *v > 0.0), "{depth:?}: the tiles reached the output");
                 let d = a.iter().zip(b).map(|(x, y)| (x - y).abs()).fold(0.0, f32::max);
-                assert!(d <= 2e-3, "f32 differs by {d}");
+                assert!(d <= 2e-3, "{depth:?}: f32 differs by {d}");
             }
             _ => panic!("sample formats differ"),
         }
