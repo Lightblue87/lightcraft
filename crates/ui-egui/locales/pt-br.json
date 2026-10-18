@@ -2199,5 +2199,11 @@
   "Copying picked files": "Copiando os arquivos escolhidos",
   "Install your own ONNX model: choose its .onnx file and its denoise-model.json together. This build offers no model downloads.": "Instale seu próprio modelo ONNX: escolha o arquivo .onnx e o denoise-model.json dele juntos. Esta versão não oferece downloads de modelos.",
   "Denoise model": "Modelo de redução de ruído",
-  "Choose the model's .onnx file.": "Escolha o arquivo .onnx do modelo."
+  "Choose the model's .onnx file.": "Escolha o arquivo .onnx do modelo.",
+  "Include selected photos": "Incluir fotos selecionadas",
+  "Color Overlay": "Sobreposição de cor",
+  "Color Overlay on B&W": "Sobreposição de cor em P&B",
+  "Image on Black": "Imagem sobre preto",
+  "Image on White": "Imagem sobre branco",
+  "White on Black": "Branco sobre preto"
 }
