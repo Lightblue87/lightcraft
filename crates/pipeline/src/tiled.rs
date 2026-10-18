@@ -57,9 +57,10 @@ impl TileOptions {
 }
 
 /// Whether `s` can be rendered tiled for `req` as far as the settings go (the source and output
-/// size can still rule it out: see [`render_tiled`]).
+/// size can still rule it out: see [`render_tiled`]). A windowed request (a zoomed view) isn't:
+/// its frame's size and the vignette's centre are the whole output's, which the tiles don't know.
 pub fn supported(s: &DevelopSettings, req: &RenderRequest) -> bool {
-    if req.overlay != Overlay::None || !s.spots.is_empty() {
+    if req.window.is_some() || req.overlay != Overlay::None || !s.spots.is_empty() {
         return false;
     }
     s.masks.iter().filter(|m| m.visible && !m.components.is_empty()).all(|m| {

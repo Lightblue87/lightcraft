@@ -182,4 +182,8 @@ fn far_reaching_settings_are_not_tiled() {
     assert!(render_tiled(&src, &SourceInfo::default(), &s, &req, &opts).is_none());
     // a downscaled render needs the prefilter
     assert!(render_tiled(&src, &SourceInfo::default(), &DevelopSettings::default(), &RenderRequest::fit(200, 200), &opts).is_none());
+    // a zoomed view's window: its size and vignette are the whole output's
+    let windowed = RenderRequest { window: Some(crate::PixelWindow { x: 8, y: 8, w: 64, h: 48 }), ..RenderRequest::fit(W, H) };
+    assert!(!crate::tiled::supported(&DevelopSettings::default(), &windowed));
+    assert!(render_tiled(&src, &SourceInfo::default(), &DevelopSettings::default(), &windowed, &opts).is_none());
 }

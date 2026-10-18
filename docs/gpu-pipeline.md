@@ -214,7 +214,8 @@ cannot vouch for:
 
 | failure | this render | later renders |
 |---|---|---|
-| buffer over the device limit | CPU | GPU |
+| buffer over the device limit, render that can be tiled | GPU, in tiles | GPU |
+| buffer over the device limit, render that can't be tiled | CPU | GPU |
 | out of device memory | CPU (buffer pool emptied) | GPU |
 | entirely black result | CPU | GPU |
 | validation / internal error, device lost, readback failure or timeout, incomplete image, panic | CPU | CPU (whole process) |
