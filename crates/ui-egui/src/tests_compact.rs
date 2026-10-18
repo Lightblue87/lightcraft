@@ -251,6 +251,22 @@ fn mouse_click_on_a_slider_still_sets_the_value_there() {
     assert!(exposure(&h) < before - 1.0, "set near the minimum: {before} → {}", exposure(&h));
 }
 
+#[test]
+fn mouse_click_on_a_slider_sets_the_value_on_a_touch_screen_too() {
+    // the screen has been touched (as the mobile shells announce on their first frame), but the
+    // click comes from a trackpad or mouse: it sets the value as on the desktop
+    let mut h = demo(PHONE, json!({"view": "detail", "right": "edit"}));
+    let before = exposure(&h);
+    touch_screen(&mut h);
+    let track = exposure_in_view(&mut h);
+    let r = h.request("ui.click", json!({"x": track.left() + 2.0, "y": track.center().y}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..4 {
+        h.step();
+    }
+    assert!(exposure(&h) < before - 1.0, "set near the minimum: {before} → {}", exposure(&h));
+}
+
 /// The soft keyboard, as a phone shell reports it: 330 pt of the screen's bottom.
 const KEYBOARD: f32 = 330.0;
 

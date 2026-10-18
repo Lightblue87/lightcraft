@@ -543,7 +543,9 @@ pub fn slider_padded(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool,
                 v = nv;
             }
         } else if resp.clicked()
-            && !ui.input(|i| i.has_touch_screen())
+            // a finger's tap leaves the value (on a phone the sliders fill the panel); a mouse or
+            // trackpad click sets it, on a touch screen too (an iPad's trackpad)
+            && !finger(ui.ctx())
             && let Some(p) = resp.interact_pointer_pos()
             // a click on the thumb leaves it there, so the first click of a double-click on it isn't a
             // history step of its own before the reset
