@@ -594,17 +594,13 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf, 
             }
             let export_dir = library_dir.with_file_name("LightCraft Exports").to_string_lossy().to_string();
             let _ = PICKED_DIR.set(library_dir.join("Picked"));
-            let mut s = Session::new().with_fs().with_system_clock().with_models_in(&data_dir);
-            let t0 = std::time::Instant::now();
-            match s.open_library(&library_dir, true) {
-                Ok(r) => {
-                    let replayed = r.replayed;
-                    log::info!("library: {} photos, {replayed} log records replayed ({:.1} ms)", s.catalog.len(), t0.elapsed().as_secs_f64() * 1e3);
-                }
-                Err(e) => log::error!("can't open library {}: {e}", library_dir.display()),
-            }
+            // a library that can't be opened (unreadable, no room to create it) is reported in the
+            // desktop's recovery window before anything can be edited, never a silent session
+            let fresh = || Session::new().with_fs().with_system_clock().with_models_in(&data_dir);
+            let (mut s, problem) = lightcraft_ui_egui::panels::library_problem::open_or_problem(fresh, &library_dir, true);
             memory::configure(&mut s, &_cc.egui_ctx);
             let mut app = LightcraftApp::new(s, services(export_dir));
+            app.library_problem = problem;
             if let Some(port) = control_port() {
                 app = app.with_control(control_server::start(port, _cc.egui_ctx.clone()));
             }
