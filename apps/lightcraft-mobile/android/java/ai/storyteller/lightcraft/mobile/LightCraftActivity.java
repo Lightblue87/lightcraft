@@ -482,7 +482,7 @@ public class LightCraftActivity extends NativeActivity {
     private String copy(Uri uri, String target) throws Exception {
         File out = new File(target);
         out.mkdirs();
-        String name = displayName(uri);
+        String name = safeName(displayName(uri));
         copyName = name;
         String type = getContentResolver().getType(uri);
         boolean heif = type != null && (type.equals("image/heic") || type.equals("image/heif"));
