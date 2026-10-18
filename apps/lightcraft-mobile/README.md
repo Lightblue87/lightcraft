@@ -1,7 +1,7 @@
 # LightCraft mobile (spike)
 
-The desktop egui UI and engine, shared with the desktop app (with the compact and touch
-adaptations below), in a thin iOS/iPadOS or Android shell. It's a
+The desktop egui UI and engine (with the compact and touch adaptations below) run in a thin
+iOS/iPadOS or Android shell. It's a
 feasibility spike, not a usable mobile app. The assessment, the effort estimate and the blockers
 are in [docs/porting-report.md](docs/porting-report.md).
 
