@@ -31,6 +31,7 @@ pub mod merge;
 mod model_setup;
 pub mod panels;
 pub mod pick;
+pub mod prefs;
 pub mod print_view;
 pub mod recheck;
 pub mod region;

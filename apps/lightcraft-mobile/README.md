@@ -26,7 +26,12 @@ If `cargo` on `PATH` isn't rustup's, set `CARGO` (for example
 ## What works
 
 - The library opens on disk in the sandbox, seeded with the demo photos. On iOS it's
-  `Documents/LightCraft Library`; on Android it's the app's internal data dir.
+  `Documents/LightCraft Library`; on Android it's the app's internal data dir. If it can't be
+  opened, the desktop's window says why and offers Try Again or Continue Without Saving before
+  anything can be edited.
+- The UI settings (language, shortcuts, panels …) are kept in `ui.json` next to the models (iOS
+  `Library/Application Support/LightCraft`, Android the internal data dir), saved a few seconds
+  after a change and at exit (`lightcraft_ui_egui::prefs`).
 - The grid, the loupe and every develop control work. A touch drag on a slider renders live.
 - GPU compute runs on Metal (iOS). Edits survive a hard kill, because the journal is fsynced
   per command.

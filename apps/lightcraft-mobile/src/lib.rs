@@ -40,6 +40,8 @@ use lightcraft_ui_egui::{LightcraftApp, Services};
 
 struct App {
     app: LightcraftApp,
+    /// The UI state and app settings (language, shortcuts …) in the sandbox's `ui.json`.
+    prefs: lightcraft_ui_egui::prefs::UiPrefs,
     /// The touch screen has been announced to egui (see `raw_input_hook`).
     touch_announced: bool,
     /// iOS: the safe area as egui-winit last reported it, before the keyboard is added.
@@ -73,9 +75,10 @@ struct App {
 }
 
 impl App {
-    fn new(app: LightcraftApp) -> Self {
+    fn new(app: LightcraftApp, prefs: lightcraft_ui_egui::prefs::UiPrefs) -> Self {
         App {
             app,
+            prefs,
             touch_announced: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             insets: egui::SafeAreaInsets::default(),
@@ -310,6 +313,12 @@ impl eframe::App for App {
         self.copy_row(ctx);
         memory::poll(&mut self.app.session);
         self.app.logic(ctx);
+        // the settings, a few seconds after a change (a phone may stop the app without asking)
+        let now = ctx.input(|i| i.time);
+        if let Some(e) = self.prefs.tick(&self.app.ui, now, self.app.library_problem.is_some()) {
+            log::warn!("{e}");
+            self.app.notices.push(e);
+        }
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         // egui turns on touch drag-to-scroll once it has seen a touch, but hit-tests against the
@@ -350,6 +359,9 @@ impl eframe::App for App {
         self.follow_text_field(ui.ctx());
     }
     fn on_exit(&mut self) {
+        if let Some(e) = self.prefs.save(&self.app.ui, self.app.library_problem.is_some()) {
+            log::error!("{e}");
+        }
         if let Err(e) = self.app.session.close_library() {
             log::error!("saving the library failed: {e}");
         }
@@ -601,10 +613,17 @@ pub fn run(mut options: eframe::NativeOptions, library_dir: std::path::PathBuf, 
             memory::configure(&mut s, &_cc.egui_ctx);
             let mut app = LightcraftApp::new(s, services(export_dir));
             app.library_problem = problem;
+            // the settings saved last time (language, shortcuts, panels …)
+            let (prefs, saved, warning) = lightcraft_ui_egui::prefs::UiPrefs::load(data_dir.join("ui.json"));
+            if let Some(ui) = saved {
+                app.ui = ui;
+            }
+            lightcraft_ui_egui::i18n::set_language(app.ui.language);
+            app.notices.extend(warning);
             if let Some(port) = control_port() {
                 app = app.with_control(control_server::start(port, _cc.egui_ctx.clone()));
             }
-            Ok(Box::new(App::new(app)))
+            Ok(Box::new(App::new(app, prefs)))
         }),
     )
 }
