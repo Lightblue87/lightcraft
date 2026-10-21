@@ -444,7 +444,7 @@ fn a_menu_taller_than_the_screen_scrolls_to_its_last_item() {
     assert!(list.bottom() <= hgt, "the menu stays on screen: {list:?}");
     assert!(list.bottom() > hgt - 60.0, "and uses the room below the menu bar: {list:?}");
     // scroll the list down to its last item
-    let last = "menuItem:view.filterBar";
+    let last = "menuitem:view.filterBar";
     for _ in 0..40 {
         if widget(&mut h, last).bottom() <= list.bottom() {
             break;
