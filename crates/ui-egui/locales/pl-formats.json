@@ -298,5 +298,6 @@
   "Move {n} photo{} to “{}”?": "Przenieść do „{1}” — zdjęcia: {n}{0:.0}?",
   "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Przeniesiono do „{1}” — zdjęcia: {n}{0:.0}. Edytuj → Cofnij przywróci je.",
   " · {reduced} made smaller to fit this device's memory": " · zmniejszono {reduced}, aby zmieścić się w pamięci tego urządzenia",
-  "Photos · {n}": "Zdjęcia · {n}"
+  "Photos · {n}": "Zdjęcia · {n}",
+  "Listing folders — folders: {folders}, files: {files}": "Przeglądanie folderów — foldery: {folders}, pliki: {files}"
 }

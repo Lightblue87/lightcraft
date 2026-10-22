@@ -65,8 +65,8 @@ pub fn level_room(screen: Rect, bar_bottom: Option<f32>, depth: usize, anchor: O
 /// `resp`'s context menu (right-click, or a long press on a touch screen), bounded by the window
 /// like the menu bar's menus: when its rows don't fit they scroll, with a finger too. Submenus
 /// in it use [`submenu`] at depth 1.
-pub fn context_menu(resp: &egui::Response, rows: impl FnOnce(&mut Ui)) {
-    resp.context_menu(|ui| level(ui, 1, None, rows));
+pub fn context_menu(resp: &egui::Response, rows: impl FnOnce(&mut Ui)) -> Option<egui::InnerResponse<()>> {
+    crate::widgets::context_menu(resp, |ui| level(ui, 1, None, rows))
 }
 
 /// A submenu row showing `text` in a menu level at `depth`, whose rows `children` draws one

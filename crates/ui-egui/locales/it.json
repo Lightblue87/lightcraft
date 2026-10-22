@@ -1609,7 +1609,6 @@
   "Width": "Larghezza",
   "Width (% of photo)": "Larghezza (% della foto)",
   "Width (px)": "Larghezza (px)",
-  "Width × Height": "Larghezza × altezza",
   "Will be replaced": "Verrà sostituita",
   "Will be restored": "Verrà ripristinata",
   "Window": "Finestra",
@@ -2353,5 +2352,17 @@
   "Copying picked files": "Copia dei file scelti",
   "Install your own ONNX model: choose its .onnx file and its denoise-model.json together. This build offers no model downloads.": "Installa un tuo modello ONNX: scegli insieme il file .onnx e il suo denoise-model.json. Questa versione non offre download di modelli.",
   "Denoise model": "Modello di riduzione disturbo",
-  "Choose the model's .onnx file.": "Scegli il file .onnx del modello."
+  "Choose the model's .onnx file.": "Scegli il file .onnx del modello.",
+  "Dimensions": "Dimensioni",
+  "Show in Folders": "Mostra in Cartelle",
+  "Width & Height": "Larghezza & altezza",
+  "View Options…": "Opzioni di visualizzazione…",
+  "View Options": "Opzioni di visualizzazione",
+  "Loupe View": "Vista lente",
+  "Show Info Overlay": "Mostra sovrapposizione informazioni",
+  "Loupe Info 1": "Info lente 1",
+  "Loupe Info 2": "Info lente 2",
+  "Use Defaults": "Usa predefiniti",
+  "Camera & Lens": "Fotocamera e obiettivo",
+  "View → View Options chooses the lines Info 1 and Info 2 show.": "Visualizza → Opzioni di visualizzazione sceglie le righe di Info 1 e Info 2."
 }

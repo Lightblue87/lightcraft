@@ -561,7 +561,7 @@ fn section(
             app.toast(ui.ctx(), e);
         }
     }
-    resp.context_menu(|ui| {
+    crate::widgets::context_menu(&resp, |ui| {
         let mut solo = app.ui.single_panel;
         let item = ui.checkbox(&mut solo, crate::i18n::tr("Solo Mode"));
         register(ui.ctx(), "sectionMenu:solo", item.rect);

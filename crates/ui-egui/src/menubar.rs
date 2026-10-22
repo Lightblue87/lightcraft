@@ -181,6 +181,8 @@ const LAYOUT: &[(&str, &[&str])] = &[
             "compare.makeSelect",
             "compare.previous",
             "compare.next",
+            "---",
+            "view.viewOptions",
         ],
     ),
     (
@@ -215,6 +217,7 @@ const LAYOUT: &[(&str, &[&str])] = &[
             "photo.reload",
             "photo.readFocusPoints",
             "app.showInFinder",
+            "app.showInFolders",
             "dialog.rename",
             "dialog.captureTime",
             "photo.tagFromTracklog",

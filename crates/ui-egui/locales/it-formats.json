@@ -298,5 +298,6 @@
   "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Foto spostate in “{1}”: {n}{0:.0}. Modifica → Annulla le riporta indietro.",
   " · {reduced} made smaller to fit this device's memory": " · {reduced} ridotte per stare nella memoria di questo dispositivo",
   "Photos · {n}": "Foto · {n}",
-  "{skipped} catalog images were not imported because their records in the catalog are incomplete.": "{skipped} immagini del catalogo non sono state importate perché i loro record nel catalogo sono incompleti."
+  "{skipped} catalog images were not imported because their records in the catalog are incomplete.": "{skipped} immagini del catalogo non sono state importate perché i loro record nel catalogo sono incompleti.",
+  "Listing folders — folders: {folders}, files: {files}": "Elenco delle cartelle — cartelle: {folders}, file: {files}"
 }
