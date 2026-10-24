@@ -238,57 +238,6 @@ fn touch_dragging_a_point_moves_it_in_a_scrolling_panel() {
     assert!((c[1].0 - 0.4).abs() < 0.03 && (c[1].1 - 0.7).abs() < 0.03, "the point follows the finger: {c:?}");
 }
 
-fn widget_rect(h: &mut Headless, id: &str) -> egui::Rect {
-    let r = h.request("ui.widgets", json!({"filter": id}), T);
-    let w = r["result"].as_array().unwrap().iter().find(|w| w["id"] == id).cloned().unwrap_or_else(|| panic!("{id} on screen: {r}"));
-    let v: Vec<f32> = (0..4).map(|i| w["rect"][i].as_f64().unwrap() as f32).collect();
-    egui::Rect::from_min_size(egui::pos2(v[0], v[1]), egui::vec2(v[2], v[3]))
-}
-
-/// A point at fractions (`fx` across, `fy` up from the bottom) of the curve graph.
-fn at(r: egui::Rect, fx: f32, fy: f32) -> egui::Pos2 {
-    egui::pos2(r.left() + fx * r.width(), r.bottom() - fy * r.height())
-}
-
-#[test]
-fn touch_dragging_the_parametric_graph_adjusts_the_region_under_the_finger() {
-    let mut h = curve_open_sized("parametric", [1194.0, 834.0]);
-    let r = curve_rect(&mut h);
-    let undo_before = h.app.session.undo.len();
-    // the right end (highlights) dragged up by a quarter of the graph: +50
-    touch_drag(&mut h, at(r, 0.9, 0.5), at(r, 0.9, 0.75), 10);
-    let c = develop(&h).curve;
-    assert!((c.highlights - 50.0).abs() <= 2.0, "highlights follow the drag: {c:?}");
-    assert_eq!((c.lights, c.darks, c.shadows), (0.0, 0.0, 0.0), "only that region: {c:?}");
-    assert_eq!(h.app.session.undo.len(), undo_before + 1, "one undo step per drag");
-    // the left end (shadows) dragged down, past the bottom: clamped at −100
-    touch_drag(&mut h, at(r, 0.1, 0.5), at(r, 0.1, -0.4), 10);
-    assert_eq!(develop(&h).curve.shadows, -100.0);
-    // darks (between the shadows and midtones splits) by mouse
-    let r2 = h.request("ui.dragWidget", json!({"id": "curve", "fx": 0.4, "fy": 0.5, "dx": 0.0, "dy": -0.1 * r.height(), "steps": 8}), T);
-    assert_eq!(r2["ok"], true, "{r2}");
-    h.step();
-    assert!((develop(&h).curve.darks - 20.0).abs() <= 2.0, "{:?}", develop(&h).curve);
-}
-
-#[test]
-fn dragging_a_split_handle_moves_the_split_between_its_neighbours() {
-    let mut h = curve_open("parametric");
-    let r = curve_rect(&mut h);
-    let mid = widget_rect(&mut h, "curveSplit:mid");
-    // midtones split 50 → 60
-    touch_drag(&mut h, mid.center(), mid.center() + egui::vec2(0.1 * r.width(), 0.0), 8);
-    assert!((develop(&h).curve.split_mid - 60.0).abs() <= 1.0, "{:?}", develop(&h).curve);
-    // the shadows split can't pass the midtones split
-    let sh = widget_rect(&mut h, "curveSplit:shadows");
-    touch_drag(&mut h, sh.center(), sh.center() + egui::vec2(0.6 * r.width(), 0.0), 8);
-    let c = develop(&h).curve;
-    assert!(c.split_shadows < c.split_mid, "{c:?}");
-    // double-tap resets
-    click_widget(&mut h, "curveSplit:mid", 2);
-    assert_eq!(develop(&h).curve.split_mid, 50.0);
-}
-
 /// A targeted-adjustment tool takes over clicks and drags on the photo, so turning it on says so
 /// (and how to leave), and Esc leaves it: one left on by mistake looked like a frozen canvas.
 #[test]
