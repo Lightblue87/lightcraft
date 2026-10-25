@@ -37,7 +37,7 @@ fn toggle(ui: &mut egui::Ui, id: &str, on: bool, tip: &str, draw: impl FnOnce(&e
     let t = Tokens::get(ui.ctx());
     let (r, resp) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
     crate::widgets::announce_selected(&resp, crate::i18n::tr(tip), on);
-    register(ui.ctx(), format!("filter:{id}"), r);
+    register(ui, format!("filter:{id}"), r);
     let p = ui.painter();
     if on {
         p.rect_filled(r, 5.0, t.tool_active);
@@ -103,7 +103,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // narrower bar (a phone) wraps its groups onto as many rows as they need
     let two_rows = ui.available_width() < WIDE;
     let wraps = ui.available_width() < NARROW;
-    let wrapped_id = egui::Id::new("filterbar-wrapped-height");
+    let wrapped_id = egui::Id::unique("filterbar-wrapped-height");
     let wrapped_h = ui.ctx().data(|d| d.get_temp::<f32>(wrapped_id)).unwrap_or(2.0 * HEIGHT - 8.0);
     let height = if wraps {
         wrapped_h
@@ -115,7 +115,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
     ui.painter().rect_filled(bar, 0.0, t.chrome);
     ui.painter().line_segment([bar.left_bottom(), bar.right_bottom()], Stroke::new(1.0, t.divider));
-    register(ui.ctx(), "filterbar", bar);
+    register(ui, "filterbar", bar);
     let f = app.session.filter.clone();
     let row = |ui: &mut egui::Ui, i: f32| {
         // 20 pt in, in line with the grid's title and the filter chips
@@ -282,19 +282,19 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     ui.add_space(14.0);
     let filtering = app.session.filter != Default::default();
     let save = ui.add_enabled(filtering, egui::Button::new(egui::RichText::new(crate::i18n::tr("Save as Smart Album…")).font(t.font(12.5))));
-    register(ui.ctx(), "button:filterSave", save.rect);
+    register(ui, "button:filterSave", save.rect);
     if save.clicked() {
         let _ = app.run("dialog.newSmartAlbum", json!({}));
     }
     let clear = ui.add_enabled(filtering, egui::Button::new(egui::RichText::new(crate::i18n::tr("Clear")).font(t.font(12.5))));
-    register(ui.ctx(), "button:filterClear", clear.rect);
+    register(ui, "button:filterClear", clear.rect);
     if clear.clicked() {
         app.ui.search.clear();
         let _ = app.run("library.clearFilter", json!({}));
     }
     // filter presets: apply one, save the current filter, delete
     let presets = crate::widgets::dropdown(ui, "filterPresets", crate::i18n::tr("Presets"), t.font(12.5), t.text);
-    register(ui.ctx(), "button:filterPresets", presets.rect);
+    register(ui, "button:filterPresets", presets.rect);
     egui::Popup::menu(&presets).show(|ui| {
         let names: Vec<String> = app.session.filter_presets.iter().map(|f| f.name.clone()).collect();
         for n in &names {
@@ -329,7 +329,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
 /// Controls that stay together on one row when a narrow bar wraps: the group asks for its width
 /// as last drawn, so a group that doesn't fit the rest of the row starts the next one.
 fn group(ui: &mut egui::Ui, key: &str, add: impl FnOnce(&mut egui::Ui)) {
-    let id = egui::Id::new(("filterbar-group", key));
+    let id = egui::Id::unique(("filterbar-group", key));
     let last = ui.ctx().data(|d| d.get_temp::<f32>(id));
     let size = vec2(last.unwrap_or(0.0), ui.spacing().interact_size.y);
     let r = ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| {

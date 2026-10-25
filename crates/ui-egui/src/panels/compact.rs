@@ -49,7 +49,7 @@ const BAR_MARGIN: i8 = 6;
 const BUTTON: egui::Vec2 = egui::vec2(40.0, 40.0);
 
 fn flag_id() -> egui::Id {
-    egui::Id::new("compact-layout")
+    egui::Id::unique("compact-layout")
 }
 
 /// Whether this frame uses the compact layout.
@@ -111,7 +111,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         let avail = ui.available_rect_before_wrap();
         let w = if beside(ui.ctx()) { side_width(avail.width()) } else { avail.width() };
         let r = egui::Panel::left("left_panel").frame(egui::Frame::NONE).resizable(false).exact_size(w).show(ui, |ui| super::left::show(app, ui));
-        register(ui.ctx(), "panel:left_panel", r.response.rect);
+        register(ui, "panel:left_panel", r.response.rect);
         if app.session.source != source {
             app.ui.left_panel = false;
         }
@@ -154,7 +154,7 @@ fn topbar(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 if let Some((n, e)) = app.session.unsaved() {
                     let (r, resp) = right.allocate_exact_size(BUTTON, Sense::hover());
                     paint(right.painter(), r.shrink(10.0), Icon::Cloud, t.caution);
-                    register(right.ctx(), "indicator:unsaved", r);
+                    register(&right, "indicator:unsaved", r);
                     resp.on_hover_text(format!("{n} unsaved: {e}"));
                 }
                 right.add_space(4.0);
@@ -270,7 +270,7 @@ fn sheet(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         egui::Panel::bottom("compact_sheet").exact_size(height)
     };
     panel.resizable(false).frame(egui::Frame::NONE.fill(t.chrome).stroke(Stroke::new(1.0, t.divider))).show(ui, |ui| {
-        register(ui.ctx(), "panel:sheet", ui.max_rect());
+        register(ui, "panel:sheet", ui.max_rect());
         egui::Panel::top("compact_sheet_tools")
             .exact_size(BUTTON.y + 4.0)
             // (inside the sheet's 1 pt border: its icons line up with the bars')
@@ -279,7 +279,7 @@ fn sheet(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if app.ui.presets {
             super::presets::show(app, ui);
         } else {
-            register(ui.ctx(), "panel:right_panel", ui.available_rect_before_wrap());
+            register(ui, "panel:right_panel", ui.available_rect_before_wrap());
             super::right::show(app, ui);
         }
     });
@@ -329,7 +329,7 @@ fn tools(app: &mut LightcraftApp, ui: &mut egui::Ui) {
 }
 
 fn shrink_id() -> egui::Id {
-    egui::Id::new("content-shrink")
+    egui::Id::unique("content-shrink")
 }
 
 /// Call at the end of a scroll area's contents: for a few frames after the content area got

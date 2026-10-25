@@ -66,8 +66,10 @@ fn secondary(pos: egui::Pos2, pressed: bool) -> egui::Event {
     egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::default() }
 }
 
-fn wheel(delta: egui::Vec2, phase: egui::TouchPhase) -> egui::Event {
-    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase, modifiers: egui::Modifiers::default() }
+/// A trackpad scroll by `delta`: fingers on the trackpad (`Trackpad`), or the coasting after they
+/// lift (`Momentum`).
+fn wheel(delta: egui::Vec2, phase: egui::TouchPhase, source: egui::MouseWheelSource) -> egui::Event {
+    egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase, source, modifiers: egui::Modifiers::default() }
 }
 
 /// The view hovering is reported in (winit's).
@@ -110,11 +112,11 @@ define_class!(
             if state == UIGestureRecognizerState::Began {
                 COAST.set(None);
                 SCROLLED.set(t);
-                events.push(wheel(t, egui::TouchPhase::Start));
+                events.push(wheel(t, egui::TouchPhase::Start, egui::MouseWheelSource::Trackpad));
             } else if state == UIGestureRecognizerState::Changed {
-                events.push(wheel(t - SCROLLED.replace(t), egui::TouchPhase::Move));
+                events.push(wheel(t - SCROLLED.replace(t), egui::TouchPhase::Move, egui::MouseWheelSource::Trackpad));
             } else {
-                events.push(wheel(t - SCROLLED.replace(egui::Vec2::ZERO), egui::TouchPhase::End));
+                events.push(wheel(t - SCROLLED.replace(egui::Vec2::ZERO), egui::TouchPhase::End, egui::MouseWheelSource::Trackpad));
                 if state == UIGestureRecognizerState::Ended {
                     let v = recognizer.velocityInView(Some(view));
                     let v = egui::vec2(v.x as f32, v.y as f32);
@@ -246,7 +248,7 @@ pub fn input(raw: &mut egui::RawInput) {
         return;
     }
     COAST.set(Some(v));
-    raw.events.push(wheel(v * dt, egui::TouchPhase::Move));
+    raw.events.push(wheel(v * dt, egui::TouchPhase::Move, egui::MouseWheelSource::Momentum));
     repaint();
 }
 

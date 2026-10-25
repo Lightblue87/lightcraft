@@ -431,7 +431,7 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, opts: &mut MergeDialog) 
             let box_size = if compact { egui::vec2(ui.available_width(), ui.available_width() * 0.7) } else { egui::vec2(520.0, 360.0) };
             let (rect, resp) = ui.allocate_exact_size(box_size, egui::Sense::click_and_drag());
             ui.painter().rect_filled(rect, 4.0, t.canvas);
-            crate::widgets::register(ui.ctx(), "merge.preview", rect);
+            crate::widgets::register(ui, "merge.preview", rect);
             if let Some((tex, size, _, _)) = &app.merge.preview {
                 let (tex, size) = (tex.id(), *size);
                 let (r, zoom) = preview_rect(rect, size, ui.ctx().pixels_per_point(), app.merge.zoom);

@@ -186,7 +186,7 @@ impl App {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         let Some(android) = ANDROID_APP.get() else { return };
-        let ime = ctx.output(|o| o.ime.map(|i| i.purpose));
+        let ime = ctx.output(|o| o.ime.as_ref().map(|i| i.purpose));
         let wanted = ime.and_then(|_| ctx.memory(|m| m.focused()));
         let purpose = ime.unwrap_or_default();
         // the field's text, from what it reported this frame (focus, a change, a selection), and
@@ -194,7 +194,7 @@ impl App {
         let reported = ctx.output(|o| {
             o.events.iter().rev().find_map(|e| {
                 let info = e.widget_info();
-                (info.typ == egui::WidgetType::TextEdit).then(|| info.current_text_value.clone()).flatten()
+                (info.role == egui::Role::TextInput).then(|| info.current_text_value.clone()).flatten()
             })
         });
         let field = |id: egui::Id, text: String| {
@@ -210,7 +210,7 @@ impl App {
         let numeric = ctx.output(|o| {
             o.events.iter().find_map(|e| {
                 let info = e.widget_info();
-                matches!(info.typ, egui::WidgetType::DragValue | egui::WidgetType::Slider).then_some(info.value)
+                matches!(info.role, egui::Role::SpinButton | egui::Role::Slider).then_some(info.value)
             })
         });
         if let Some(value) = numeric {
@@ -320,7 +320,7 @@ impl eframe::App for App {
             self.app.notices.push(e);
         }
     }
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // egui turns on touch drag-to-scroll once it has seen a touch, but hit-tests against the
         // previous frame, so the first swipe after launch would never scroll: announce the touch
         // screen up front with a cancelled touch
@@ -337,19 +337,19 @@ impl eframe::App for App {
         {
             self.keyboard_inset(raw);
             // a hardware keyboard's keys (winit 0.30 passes only typed text on)
-            ios_keys::input(raw, _ctx.text_edit_focused());
+            ios_keys::input(raw, ctx.text_edit_focused());
             // a hovering Pencil or trackpad pointer, and the Pencil's double tap
             ios_pencil::input(raw);
             if ios_pencil::taken_tap() {
-                self.app.pencil_tap(_ctx);
+                self.app.pencil_tap(ctx);
             }
         }
         #[cfg(target_os = "android")]
         {
-            self.window_insets(_ctx, raw);
+            self.window_insets(ctx, raw);
             self.text_input_events(raw);
         }
-        self.app.raw_input_hook(raw);
+        self.app.raw_input_hook(ctx, raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.app.ui(ui);
