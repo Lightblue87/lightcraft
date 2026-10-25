@@ -289,7 +289,7 @@ fn row(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Row, selection: &[PhotoId
     if crate::widgets::double_clicked(ui, &resp) {
         app.ui.dialog = Some(edit_dialog(app, &r.path));
     }
-    crate::menu_level::context_menu(&resp, |ui| menu(app, ui, &r.path, selection));
+    crate::widgets::context_menu(&resp, |ui| menu(app, ui, &r.path, selection));
 }
 
 /// How many of the keywords inside one are named before the rest are counted.

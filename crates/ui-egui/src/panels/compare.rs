@@ -519,7 +519,7 @@ pub fn show_compare(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if crate::widgets::double_clicked(ui, &resp) {
             app.ui.zoom = if app.ui.zoom == Zoom::Fit { Zoom::Percent(100.0) } else { Zoom::Fit };
         }
-        crate::menu_level::context_menu(&resp, |ui| {
+        crate::widgets::context_menu(&resp, |ui| {
             if ui.button(crate::i18n::tr("Swap")).clicked() {
                 let _ = swap(app);
             }
@@ -586,7 +586,7 @@ pub fn show_survey(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                 let _ = app.run("library.select", json!({"ids": [id.0], "mode": "toggle"}));
             }
         }
-        crate::menu_level::context_menu(&resp, |ui| super::grid::context_menu(app, ui, *id));
+        crate::widgets::context_menu(&resp, |ui| super::grid::context_menu(app, ui, *id));
     }
     let n = photos.len();
     let msg = if app.session.selection.ids.len() > SURVEY_MAX {
@@ -616,7 +616,7 @@ pub fn show_reference(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let (_, lresp) = photo_tile(app, ui, r, Slot::Compare(0), left, "Reference", zoom);
     let (img, _) = photo_tile(app, ui, active, Slot::Compare(1), right, "Active", zoom);
     app.image_rect = Some(img);
-    crate::menu_level::context_menu(&lresp, |ui| {
+    crate::widgets::context_menu(&lresp, |ui| {
         if ui.button(crate::i18n::tr("Clear Reference")).clicked() {
             app.ui.reference = None;
             app.ui.view = ViewMode::Detail;

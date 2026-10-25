@@ -1147,8 +1147,11 @@ fn switch_open_title(ctx: &egui::Context, titles: &[egui::Response]) -> Option<e
 /// bounded like every level. The row is registered as `menusub:<label>` (the untranslated
 /// label), and while its submenu is open it is the anchor the next frame's room is measured from.
 fn submenu(ui: &mut egui::Ui, label: &str, text: String, depth: usize, bar_bottom: Option<f32>, children: impl FnOnce(&mut egui::Ui)) {
-    let r = crate::menu_level::submenu(ui, depth, bar_bottom, text, children);
-    crate::widgets::register(ui, format!("menusub:{label}"), r.rect);
+    let r = crate::widgets::menu_button(ui, text, |ui| crate::menu_level::level(ui, depth + 1, bar_bottom, children));
+    crate::widgets::register(ui, format!("menusub:{label}"), r.response.rect);
+    if r.inner.is_some() {
+        crate::menu_level::set_anchor(ui.ctx(), depth + 1, r.response.rect);
+    }
 }
 
 /// `depth` is 1 for a top-level menu's rows; `bar_bottom` is where the menu bar ends.

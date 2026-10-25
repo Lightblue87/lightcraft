@@ -56,7 +56,18 @@ pub fn menu_button<'a, R>(ui: &mut Ui, atoms: impl egui::IntoAtoms<'a>, contents
         return ui.menu_button(atoms, contents);
     }
     let button = egui::Button::new(atoms.into_atoms()).right_text("    ");
-    let (response, inner) = egui::containers::menu::SubMenuButton::from_button(button).ui(ui, contents);
+    // in a context menu, the submenu is bounded by the window like the menu itself
+    let (response, inner) = match crate::menu_level::context_depth(ui.ctx()) {
+        Some(depth) => {
+            let (response, inner) =
+                egui::containers::menu::SubMenuButton::from_button(button).ui(ui, |ui| crate::menu_level::context_level(ui, depth + 1, contents));
+            if inner.is_some() {
+                crate::menu_level::set_anchor(ui.ctx(), depth + 1, response.rect);
+            }
+            (response, inner)
+        }
+        None => egui::containers::menu::SubMenuButton::from_button(button).ui(ui, contents),
+    };
     let center = pos2(response.rect.right() - ui.spacing().button_padding.x - 8.0, response.rect.center().y);
     paint(ui.painter(), Rect::from_center_size(center, vec2(16.0, 16.0)), Icon::ChevronRight, ui.style().interact(&response).fg_stroke.color);
     egui::InnerResponse::new(inner.map(|r| r.inner), response)
@@ -66,9 +77,12 @@ pub fn menu_button<'a, R>(ui: &mut Ui, atoms: impl egui::IntoAtoms<'a>, contents
 /// (#1877). egui closes a menu on any click once it was open on the previous frame, and judges
 /// that by the menu's id: a right-click elsewhere on the same widget while its menu is open
 /// reopened the menu at the pointer and closed it again on the same frame, a one-frame flash.
-/// The click that opens (or moves) the menu is not the one that closes it.
+/// The click that opens (or moves) the menu is not the one that closes it. Its rows are bounded by
+/// the window and scroll when they don't fit (a phone), as are its submenus ([`menu_button`]).
 pub fn context_menu(response: &Response, add_contents: impl FnOnce(&mut Ui)) -> Option<egui::InnerResponse<()>> {
-    egui::Popup::context_menu(response).close_behavior(context_menu_close(response, egui::PopupCloseBehavior::CloseOnClick)).show(add_contents)
+    egui::Popup::context_menu(response)
+        .close_behavior(context_menu_close(response, egui::PopupCloseBehavior::CloseOnClick))
+        .show(|ui| crate::menu_level::context_level(ui, 1, add_contents))
 }
 
 /// How a context menu on `response` closes this frame: `default`, except on the frame of the

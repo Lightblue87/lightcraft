@@ -1490,7 +1490,7 @@ fn versions(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             } else {
                 "Click to restore · double-click to rename"
             }));
-            crate::menu_level::context_menu(&resp, |ui| {
+            crate::widgets::context_menu(&resp, |ui| {
                 if ui.button(crate::i18n::tr("Restore")).clicked() {
                     let _ = app.run("version.restore", json!({"index": i}));
                 }
@@ -1579,7 +1579,7 @@ fn activity(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             if resp.clicked() {
                 let _ = app.run("history.restore", json!({"index": i}));
             }
-            crate::menu_level::context_menu(&resp, |ui| {
+            crate::widgets::context_menu(&resp, |ui| {
                 if ui.button(crate::i18n::tr("Copy History Step Settings to Before")).clicked() {
                     let _ = app.run("beforeAfter.setBefore", json!({"source": "history", "index": i}));
                 }
