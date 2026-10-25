@@ -326,7 +326,7 @@ fn photo_tile(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, slot: Slo
     // caption right under the image (at the bottom when zoomed in)
     let cap_top = (display.bottom() + 2.0).min(img_area.bottom());
     let cap = Rect::from_min_max(pos2(img.left().max(area.left()), cap_top), pos2(area.right(), cap_top + caption_h));
-    let pt = ui.painter();
+    let pt = &ui.painter().clone();
     let mut x = cap.left() + 4.0;
     if !label.is_empty() {
         let g = pt.layout_no_wrap(crate::i18n::tr(label).to_string(), t.semibold(12.0), if active { t.text } else { t.text_label });
@@ -340,35 +340,19 @@ fn photo_tile(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, slot: Slo
         pt.galley(pos2(x, cap.center().y - g.size().y / 2.0), g, t.text_dim);
         x += name_w + 10.0;
     }
-    // the stars rate this photo (tap the current rating again to clear it); finger-sized apart
-    // on a touch screen
-    let (step, size) = if ui.input(|i| i.has_touch_screen()) { (24.0, 16.0) } else { (13.0, 12.0) };
-    let mut rate = None;
-    for i in 0..5u8 {
-        let filled = i < photo.rating;
-        let r = Rect::from_min_size(pos2(x + i as f32 * step, cap.center().y - size / 2.0), vec2(size, size));
-        if r.right() < cap.right() {
-            let hit = Rect::from_min_size(pos2(x + i as f32 * step - (step - size) / 2.0, cap.top()), vec2(step, caption_h));
-            let sresp = ui.interact(hit, egui::Id::unique(("cull-star", id.0, i)), Sense::click());
-            crate::widgets::announce(&sresp, format!("{} ★", i + 1));
-            register(ui, format!("cullStar:{}:{}", id.0, i + 1), hit);
-            let c = if filled {
-                t.star
-            } else if sresp.hovered() {
-                t.text
-            } else {
-                t.icon.gamma_multiply(0.6)
-            };
-            crate::rating::paint_star(pt, r, filled, c);
-            if sresp.clicked() {
-                rate = Some(if photo.rating == i + 1 { 0 } else { i + 1 });
-            }
+    // the stars rate this photo: the shared rating row (a click on the current rating clears it)
+    let cell = crate::rating::RatingSize::Large.step() + 2.0;
+    let row = Rect::from_min_size(pos2(x, cap.center().y - cell / 2.0), vec2(5.0 * cell, cell));
+    if row.right() < cap.right() {
+        let mut stars = ui.new_child(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        stars.spacing_mut().item_spacing.x = 0.0;
+        if let Some(r) =
+            crate::rating::Rating::new(format!("cull{}", id.0), photo.rating).automation_ids(format!("cullStar:{}:", id.0)).show(&mut stars)
+        {
+            let _ = app.run("photo.rate", json!({"rating": r, "ids": [id.0]}));
         }
     }
-    if let Some(r) = rate {
-        let _ = app.run("photo.rate", json!({"rating": r, "ids": [id.0]}));
-    }
-    x += 5.0 * step + 4.0;
+    x += row.width() + 4.0;
     let fr = Rect::from_min_size(pos2(x, cap.center().y - 7.0), vec2(14.0, 14.0));
     match photo.flag {
         Flag::Pick if fr.right() < cap.right() => paint(pt, fr, Icon::FlagPickFilled, t.pick),
