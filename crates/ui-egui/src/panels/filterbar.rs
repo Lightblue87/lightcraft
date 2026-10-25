@@ -124,8 +124,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         c
     };
     let mut row1 = if wraps {
-        let r = Rect::from_min_size(bar.min + vec2(20.0, 4.0), vec2(bar.width() - 40.0, WRAPPED_MAX_H));
-        let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Min).with_main_wrap(true)));
+        // one row tall: the rows wrap below it (egui centres a row in its area's height)
+        let r = Rect::from_min_size(bar.min + vec2(20.0, 4.0), vec2(bar.width() - 40.0, ui.spacing().interact_size.y.max(26.0)));
+        let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true)));
         c.spacing_mut().item_spacing = vec2(4.0, 2.0);
         c
     } else {
@@ -134,79 +135,79 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let mut row2 = row(ui, 1.0);
     let ui = &mut row1;
 
-    group(ui, "rating", |ui| {
-        // rating: operator + stars
-        caption(ui, "Rating");
-        let op_label = match f.rating_op {
-            RatingOp::AtLeast => "≥",
-            RatingOp::Exactly => "=",
-            RatingOp::AtMost => "≤",
+    let g = group_start(ui, "rating");
+    // rating: operator + stars
+    caption(ui, "Rating");
+    let op_label = match f.rating_op {
+        RatingOp::AtLeast => "≥",
+        RatingOp::Exactly => "=",
+        RatingOp::AtMost => "≤",
+    };
+    picker(
+        app,
+        ui,
+        "ratingOp",
+        op_label,
+        false,
+        [("≥  at least", "atLeast", RatingOp::AtLeast), ("=  exactly", "exactly", RatingOp::Exactly), ("≤  at most", "atMost", RatingOp::AtMost)]
+            .into_iter()
+            .map(|(l, k, op)| (l.to_string(), json!({"ratingOp": k}), f.rating_op == op))
+            .collect(),
+    );
+    if let Some(r) = crate::rating::Rating::new("filter", f.rating).automation_ids("filter:star").show(ui) {
+        filter(app, json!({"rating": r}));
+    }
+    group_end(ui, g);
+    ui.add_space(14.0);
+
+    let g = group_start(ui, "flag");
+    // flags (one at a time; click again to clear)
+    caption(ui, "Flag");
+    for (id, icon, flag, tip) in [
+        ("pick", Icon::FlagPick, Flag::Pick, "Picked"),
+        ("reject", Icon::FlagReject, Flag::Reject, "Rejected"),
+        ("none", Icon::Circle, Flag::None, "Unflagged"),
+    ] {
+        let on = f.flag == Some(flag);
+        let color = match flag {
+            Flag::Pick if on => t.pick,
+            Flag::Reject if on => t.reject,
+            _ => Color32::TRANSPARENT,
         };
-        picker(
-            app,
-            ui,
-            "ratingOp",
-            op_label,
-            false,
-            [("≥  at least", "atLeast", RatingOp::AtLeast), ("=  exactly", "exactly", RatingOp::Exactly), ("≤  at most", "atMost", RatingOp::AtMost)]
-                .into_iter()
-                .map(|(l, k, op)| (l.to_string(), json!({"ratingOp": k}), f.rating_op == op))
-                .collect(),
-        );
-        if let Some(r) = crate::rating::Rating::new("filter", f.rating).automation_ids("filter:star").show(ui) {
-            filter(app, json!({"rating": r}));
+        let icon = if on && flag == Flag::Pick { Icon::FlagPickFilled } else { icon };
+        let resp = toggle(ui, id, on, tip, |p, r, c| paint(p, r, icon, if color == Color32::TRANSPARENT { c } else { color }));
+        if resp.clicked() {
+            filter(app, json!({"flag": if on { Value::Null } else { json!(id) }}));
         }
-    });
+    }
+    group_end(ui, g);
     ui.add_space(14.0);
 
-    group(ui, "flag", |ui| {
-        // flags (one at a time; click again to clear)
-        caption(ui, "Flag");
-        for (id, icon, flag, tip) in [
-            ("pick", Icon::FlagPick, Flag::Pick, "Picked"),
-            ("reject", Icon::FlagReject, Flag::Reject, "Rejected"),
-            ("none", Icon::Circle, Flag::None, "Unflagged"),
-        ] {
-            let on = f.flag == Some(flag);
-            let color = match flag {
-                Flag::Pick if on => t.pick,
-                Flag::Reject if on => t.reject,
-                _ => Color32::TRANSPARENT,
-            };
-            let icon = if on && flag == Flag::Pick { Icon::FlagPickFilled } else { icon };
-            let resp = toggle(ui, id, on, tip, |p, r, c| paint(p, r, icon, if color == Color32::TRANSPARENT { c } else { color }));
-            if resp.clicked() {
-                filter(app, json!({"flag": if on { Value::Null } else { json!(id) }}));
+    let g = group_start(ui, "label");
+    // colour labels
+    caption(ui, "Label");
+    // several labels can be on at once (any of them matches); lit are those `label` and `labels` both let through
+    let chosen: Vec<ColorLabel> = f.labels_shown().unwrap_or_default();
+    for l in ColorLabel::ALL {
+        let on = chosen.contains(&l);
+        let name = format!("{l:?}").to_lowercase();
+        let tip = crate::i18n::tr_format!("{} label (click more labels to show any of them)", crate::i18n::color_label(&app.session.catalog, l));
+        let resp = toggle(ui, &format!("label-{name}"), on, &tip, |p, r, _| {
+            p.circle_filled(r.center(), 5.5, label_color(l));
+        });
+        if resp.clicked() {
+            let mut next = chosen.clone();
+            if on {
+                next.retain(|x| *x != l);
+            } else {
+                next.push(l);
             }
+            next.sort();
+            let names: Vec<String> = next.iter().map(|x| format!("{x:?}").to_lowercase()).collect();
+            filter(app, json!({"label": Value::Null, "labels": names}));
         }
-    });
-    ui.add_space(14.0);
-
-    group(ui, "label", |ui| {
-        // colour labels
-        caption(ui, "Label");
-        // several labels can be on at once (any of them matches); lit are those `label` and `labels` both let through
-        let chosen: Vec<ColorLabel> = f.labels_shown().unwrap_or_default();
-        for l in ColorLabel::ALL {
-            let on = chosen.contains(&l);
-            let name = format!("{l:?}").to_lowercase();
-            let tip = crate::i18n::tr_format!("{} label (click more labels to show any of them)", crate::i18n::color_label(&app.session.catalog, l));
-            let resp = toggle(ui, &format!("label-{name}"), on, &tip, |p, r, _| {
-                p.circle_filled(r.center(), 5.5, label_color(l));
-            });
-            if resp.clicked() {
-                let mut next = chosen.clone();
-                if on {
-                    next.retain(|x| *x != l);
-                } else {
-                    next.push(l);
-                }
-                next.sort();
-                let names: Vec<String> = next.iter().map(|x| format!("{x:?}").to_lowercase()).collect();
-                filter(app, json!({"label": Value::Null, "labels": names}));
-            }
-        }
-    });
+    }
+    group_end(ui, g);
     ui.add_space(14.0);
 
     // kind + edited
@@ -325,17 +326,29 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Controls that stay together on one row when a narrow bar wraps: the group asks for its width
-/// as last drawn, so a group that doesn't fit the rest of the row starts the next one.
-fn group(ui: &mut egui::Ui, key: &str, add: impl FnOnce(&mut egui::Ui)) {
+/// The start of controls that stay together on one row when a narrow bar wraps
+/// ([`group_end`] after them): a group whose width as last drawn doesn't fit the rest of the row
+/// starts the next one.
+fn group_start(ui: &mut egui::Ui, key: &str) -> (egui::Id, egui::Pos2) {
     let id = egui::Id::unique(("filterbar-group", key));
     let last = ui.ctx().data(|d| d.get_temp::<f32>(id));
-    let size = vec2(last.unwrap_or(0.0), ui.spacing().interact_size.y);
-    let r = ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        add(ui);
-    });
-    let w = r.response.rect.width();
+    let row_start = ui.cursor().left() <= ui.max_rect().left() + 0.5;
+    if ui.layout().main_wrap() && !row_start && last.is_some_and(|w| w > ui.available_size_before_wrap().x) {
+        ui.end_row();
+        // the new row as tall as the first, so its caption is centred on its controls (egui
+        // centres each item in the row's height so far)
+        ui.allocate_space(vec2(0.0, ui.spacing().interact_size.y.max(26.0)));
+        ui.add_space(-ui.spacing().item_spacing.x);
+    }
+    (id, ui.cursor().min)
+}
+
+/// The end of a group begun by [`group_start`]: remember its width (one that wrapped inside
+/// asks for a row of its own).
+fn group_end(ui: &mut egui::Ui, (id, start): (egui::Id, egui::Pos2)) {
+    let now = ui.cursor().min;
+    let w = if (now.y - start.y).abs() < 0.5 { now.x - start.x } else { f32::INFINITY };
+    let last = ui.ctx().data(|d| d.get_temp::<f32>(id));
     if last.is_none_or(|l| (l - w).abs() > 0.5) {
         ui.ctx().data_mut(|d| d.insert_temp(id, w));
         ui.ctx().request_repaint();
