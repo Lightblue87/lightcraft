@@ -286,7 +286,7 @@ fn row(app: &mut LightcraftApp, ui: &mut egui::Ui, r: &Row, selection: &[PhotoId
     if resp.clicked() {
         app.ui.keyword_list_selected = Some(r.path.clone());
     }
-    if crate::widgets::double_clicked(ui, &resp) {
+    if resp.double_clicked() {
         app.ui.dialog = Some(edit_dialog(app, &r.path));
     }
     crate::widgets::context_menu(&resp, |ui| menu(app, ui, &r.path, selection));

@@ -988,7 +988,7 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         let _ = app.run("library.select", json!({"ids": [id.0], "mode": mode}));
     }
     // (in Select Several a quick second tap takes the photo out again rather than opening it)
-    if !app.ui.select_mode && crate::widgets::double_clicked(ui, &resp) {
+    if !app.ui.select_mode && resp.double_clicked() {
         let _ = app.run("library.select", json!({"ids": [id.0]}));
         let _ = app.run("view.detail", json!({}));
     }

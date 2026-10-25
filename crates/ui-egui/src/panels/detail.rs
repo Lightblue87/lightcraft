@@ -1876,7 +1876,7 @@ fn crop_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Respons
     let readout_at = pointer.filter(|_| rotating);
     let mut shown_angle = d.crop.geometry.angle;
     // double-click inside the crop box applies the crop (same as Return / Done)
-    if crate::widgets::double_clicked(ui, resp)
+    if resp.double_clicked()
         && let Some(q) = resp.interact_pointer_pos()
         && inside(q)
         && grab(q).is_none()
@@ -3324,7 +3324,7 @@ mod preview_geometry_tests {
 /// `held`: drawn with ⌘ held in the crop tool, which stays active afterwards.
 fn straighten_overlay(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Response, held: bool) {
     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
-    if !held && crate::widgets::double_clicked(ui, resp) {
+    if !held && resp.double_clicked() {
         app.auto_straighten(ui.ctx());
         app.ui.tool.clear();
         app.gesture = None;

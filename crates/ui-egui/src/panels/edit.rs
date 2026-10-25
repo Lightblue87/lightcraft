@@ -1085,7 +1085,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
                     _ => "Blue channel",
                 };
                 let resp = resp.on_hover_text(crate::i18n::tr_format!("{name} — double-click to reset it", name = name));
-                if crate::widgets::double_clicked(ui, &resp) {
+                if resp.double_clicked() {
                     app.ui.curve_channel = ch.into();
                     let _ = app.run("curve.reset", json!({"channel": ch}));
                 } else if resp.clicked() {
@@ -1200,7 +1200,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
         );
     }
     let mut new_pts = None;
-    if crate::widgets::double_clicked(ui, &resp)
+    if resp.double_clicked()
         && let Some(q) = resp.interact_pointer_pos()
         && let Some((i, dist)) = nearest(q)
         && dist < reach
@@ -1728,7 +1728,7 @@ fn grading_wheel(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings
     {
         give_pointer_back(ui.ctx(), held.origin);
     }
-    if crate::widgets::double_clicked(ui, &resp) {
+    if resp.double_clicked() {
         let _ = app.run("develop.set", json!({"values": {format!("grading.{key}.hue"): 0, format!("grading.{key}.sat"): 0}}));
     }
     // hue and saturation readout: centred above the wheel, shown like the eye (no fade)

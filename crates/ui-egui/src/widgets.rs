@@ -221,6 +221,39 @@ pub fn note_pointer(ctx: &egui::Context) {
     if let Some(f) = finger {
         ctx.data_mut(|d| d.insert_temp(egui::Id::unique(FINGER), f));
     }
+    double_tap_options(ctx);
+}
+
+/// Longest time between the two taps of a double tap (release to press, s).
+const DOUBLE_TAP: f64 = 0.5;
+
+/// How far apart the two taps of a double tap may land (points).
+const DOUBLE_TAP_DIST: f32 = 24.0;
+
+/// egui counts a double click when the second click lands within `max_click_dist` (6 pt) of the
+/// first and within `max_double_click_delay` (0.3 s): a mouse makes that, fingers seldom do (they
+/// land a few points apart, and tap slower). With a finger the delay is [`DOUBLE_TAP`], and for
+/// that long after a tap the distance is [`DOUBLE_TAP_DIST`], so every `double_clicked()` takes a
+/// double tap. Only then: `max_click_dist` is also how far a press moves before it is a drag, and
+/// a larger one at other times would make a finger's scroll start late. A mouse keeps egui's
+/// defaults.
+fn double_tap_options(ctx: &egui::Context) {
+    let key = egui::Id::unique("lc-last-tap");
+    let (now, released) = ctx.input(|i| (i.time, i.pointer.any_released()));
+    let finger = finger(ctx);
+    if finger && released {
+        ctx.data_mut(|d| d.insert_temp(key, now));
+    }
+    let pending = finger && ctx.data(|d| d.get_temp::<f64>(key)).is_some_and(|at| now - at <= DOUBLE_TAP);
+    let defaults = egui::InputOptions::default();
+    let delay = if finger { DOUBLE_TAP } else { defaults.max_double_click_delay };
+    let dist = if pending { DOUBLE_TAP_DIST } else { defaults.max_click_dist };
+    if ctx.options(|o| o.input_options.max_double_click_delay != delay || o.input_options.max_click_dist != dist) {
+        ctx.options_mut(|o| {
+            o.input_options.max_double_click_delay = delay;
+            o.input_options.max_click_dist = dist;
+        });
+    }
 }
 
 /// Whether the pointer is a finger (or pencil) now ([`note_pointer`]); before any input, whether
@@ -235,35 +268,6 @@ pub fn finger(ctx: &egui::Context) -> bool {
 /// list. A long press opens the item's context menu there (egui counts it as a secondary click).
 pub fn list_item_sense(ctx: &egui::Context) -> egui::Sense {
     if finger(ctx) { egui::Sense::click() } else { egui::Sense::click_and_drag() }
-}
-
-/// Longest time between the two taps of a double tap (release to release, s).
-const DOUBLE_TAP: f64 = 0.5;
-
-/// Whether `resp` was double-clicked, or on a touch screen double-tapped: egui's double click
-/// wants both clicks within 6 points and 0.3 s, which a mouse makes but fingers seldom do (they
-/// land a few points apart, and tap slower). Two taps on the same widget within [`DOUBLE_TAP`]
-/// count, wherever on it they land.
-pub fn double_clicked(ui: &egui::Ui, resp: &egui::Response) -> bool {
-    if !finger(ui.ctx()) {
-        return resp.double_clicked();
-    }
-    if !resp.clicked() {
-        return false;
-    }
-    let key = egui::Id::unique("lc-last-tap");
-    let now = ui.input(|i| i.time);
-    let last = ui.ctx().data(|d| d.get_temp::<(egui::Id, f64)>(key));
-    let double = last.is_some_and(|(id, at)| id == resp.id && now - at <= DOUBLE_TAP);
-    // a double tap's second tap doesn't start the next one
-    ui.ctx().data_mut(|d| {
-        if double {
-            d.remove::<(egui::Id, f64)>(key);
-        } else {
-            d.insert_temp(key, (resp.id, now));
-        }
-    });
-    double
 }
 
 /// Where the drag that `resp` reports as started was pressed. By then the pointer has moved past
@@ -665,7 +669,7 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
             let delta = ui.input(|i| i.pointer.delta());
             ui.scroll_with_delta_animation(vec2(0.0, delta.y), egui::style::ScrollAnimation::none());
         }
-    } else if double_clicked(ui, &resp) | double_clicked(ui, &label_resp) {
+    } else if resp.double_clicked() || label_resp.double_clicked() {
         out.reset = true;
         out.value = Some(spec.default);
         v = spec.default;

@@ -516,7 +516,7 @@ pub fn show_compare(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if resp.clicked() {
             select_pair(app, sel, cand, id);
         }
-        if crate::widgets::double_clicked(ui, &resp) {
+        if resp.double_clicked() {
             app.ui.zoom = if app.ui.zoom == Zoom::Fit { Zoom::Percent(100.0) } else { Zoom::Fit };
         }
         crate::widgets::context_menu(&resp, |ui| {
@@ -571,7 +571,7 @@ pub fn show_survey(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         if resp.clicked() {
             app.session.selection.active = Some(*id);
         }
-        if crate::widgets::double_clicked(ui, &resp) {
+        if resp.double_clicked() {
             let _ = app.run("library.select", json!({"ids": [id.0]}));
             app.ui.view = ViewMode::Detail;
         }

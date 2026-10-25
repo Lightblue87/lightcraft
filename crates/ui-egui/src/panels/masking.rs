@@ -285,7 +285,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             if resp.clicked() {
                 let _ = app.run("mask.select", json!({"id": m.id}));
             }
-            if crate::widgets::double_clicked(ui, &resp) {
+            if resp.double_clicked() {
                 app.ui.renaming_mask = Some((m.id, m.name.clone()));
             }
             crate::widgets::context_menu(&resp, |ui| mask_menu(app, ui, m.id, &m.name, m.visible, index, count));
@@ -352,7 +352,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 });
                 let resp = resp.inner;
                 register(ui, format!("component:{i}"), resp.rect);
-                if crate::widgets::double_clicked(ui, &resp) {
+                if resp.double_clicked() {
                     app.ui.renaming_component = Some((m.id, i, label.clone()));
                 }
                 crate::widgets::context_menu(&resp, |ui| component_row_menu(app, ui, m.id, i, &label, m.components.len()));

@@ -1480,7 +1480,7 @@ fn versions(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 app.hover_preview =
                     Some(crate::HoverPreview { label: crate::i18n::tr_format!("Version: {}", v.name), settings: (*v.settings).clone() });
             }
-            if crate::widgets::double_clicked(ui, &resp) {
+            if resp.double_clicked() {
                 crate::panels::dialogs::prompt(app, "Rename Version", "Version name", &v.name, "version.rename", json!({"index": i}), "name");
             } else if resp.clicked() && !current {
                 let _ = app.run("version.restore", json!({"index": i}));
