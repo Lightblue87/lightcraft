@@ -98,13 +98,12 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             continue;
         }
         let gap = 8.0;
-        // within the panel's 24 / 22 pt margins
-        let cw = ((ui.available_width() - 24.0 - 22.0 - gap * (COLUMNS as f32 - 1.0)) / COLUMNS as f32).max(40.0);
+        let cw = ((ui.available_width() - 44.0 - gap * (COLUMNS as f32 - 1.0)) / COLUMNS as f32).max(40.0);
         let th = (cw * 0.75).round();
         for row in list.chunks(COLUMNS) {
             let (rr, _) = ui.allocate_exact_size(vec2(ui.available_width(), th + 30.0), Sense::hover());
             for (i, p) in row.iter().enumerate() {
-                let cell = Rect::from_min_size(pos2(rr.left() + 24.0 + i as f32 * (cw + gap), rr.top()), vec2(cw, th + 24.0));
+                let cell = Rect::from_min_size(pos2(rr.left() + 22.0 + i as f32 * (cw + gap), rr.top()), vec2(cw, th + 24.0));
                 cell_ui(app, ui, &d, id, tag, p, cell, th);
             }
         }

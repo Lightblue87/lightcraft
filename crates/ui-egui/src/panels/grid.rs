@@ -829,8 +829,8 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
     // thumbnail
     let size = thumb_px(img_rect.width().max(img_rect.height()), ppp);
     request_thumb(app, id, size, if onscreen { 10 } else { 5 });
-    // where the photo is drawn: the badges sit along its bottom edge (in the square grid it is
-    // fitted inside the cell, narrower or shorter than it)
+    // where the photo is drawn (in the square grid it is fitted inside the cell): Select
+    // Several's tick sits on its corner
     let mut photo_rect = img_rect;
     if let Some(tex) = app.renderer.thumb(id) {
         let [tw, th] = tex.size;
@@ -903,7 +903,7 @@ fn cell(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, r: Rect, square
         crate::state::GridBadges::Always => true,
         crate::state::GridBadges::Never => false,
     };
-    let badge_bar = Rect::from_min_max(pos2(photo_rect.left(), photo_rect.bottom() - 24.0), photo_rect.right_bottom());
+    let badge_bar = Rect::from_min_max(pos2(img_rect.left(), img_rect.bottom() - 24.0), img_rect.right_bottom());
     if !square && photo.label.is_some() {
         // Justified photos fill the whole cell, so the label shows as a translucent tinted footer
         // over the photo's bottom edge (opaque, it would hide 24 px of every labelled photo).

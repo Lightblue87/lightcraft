@@ -1099,8 +1099,7 @@ fn curve_editor(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, d: &Dev
     });
     let ch = app.ui.curve_channel.clone();
     let w = ui.available_width();
-    // between the panel's 24 / 22 pt margins, like the sliders
-    let side = (w - 24.0 - 22.0).max(80.0);
+    let side = (w - 48.0).max(80.0);
     let (outer, _) = ui.allocate_exact_size(vec2(w, side + 12.0), Sense::hover());
     let r = Rect::from_min_size(pos2(outer.left() + 24.0, outer.top() + 6.0), vec2(side, side));
     let resp = ui.interact(r, egui::Id::unique(("curve", &ch)), Sense::click_and_drag());

@@ -1225,8 +1225,7 @@ fn date_row(app: &mut LightcraftApp, ui: &mut egui::Ui, key: &str, label: &str, 
     let open_id = egui::Id::unique(("date-open", key.to_string()));
     let mut open = tree_open(ui, open_id, false);
     let sel = app.session.filter.date.as_deref() == Some(key);
-    // room for the disclosure triangle left of the icon, as in the Local folder tree
-    let resp = row(app, ui, &format!("date:{key}"), Icon::Clock, label, Some(count), sel, indent + 12.0);
+    let resp = row(app, ui, &format!("date:{key}"), Icon::Clock, label, Some(count), sel, indent);
     if key.len() < 10 {
         tree_toggle(ui, &resp, indent, open_id, &mut open, format!("dateToggle:{key}"));
     }

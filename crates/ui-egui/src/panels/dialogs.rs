@@ -670,7 +670,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context, blocked: bool) {
                     let (preview, total) = rename_preview(app, ui.ctx(), template, *start as usize);
                     match &preview {
                         Some(rows) => {
-                            egui::Grid::new("rename-preview").num_columns(3).spacing([8.0, 2.0]).min_col_width(0.0).show(ui, |ui| {
+                            egui::Grid::new("rename-preview").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
                                 for pl in rows {
                                     ui.label(egui::RichText::new(&pl.from).color(t.text_dim));
                                     let (arrow, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
@@ -2302,8 +2302,7 @@ const WM_INSET_Y: ControlSpec =
 
 /// A themed slider row editing `v`; true when it changed.
 fn num(ui: &mut egui::Ui, spec: &ControlSpec, v: &mut f64) -> bool {
-    // in line with the dialog's label column (the panels' 24 / 22 pt slider padding indented it)
-    match crate::widgets::slider_padded(ui, spec, *v, true, None, (0.0, 0.0)).value {
+    match crate::widgets::slider(ui, spec, *v, true, None).value {
         Some(n) => {
             *v = n;
             true

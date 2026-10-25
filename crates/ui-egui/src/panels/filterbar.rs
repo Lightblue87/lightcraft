@@ -118,8 +118,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     register(ui, "filterbar", bar);
     let f = app.session.filter.clone();
     let row = |ui: &mut egui::Ui, i: f32| {
-        // 20 pt in, in line with the grid's title and the filter chips
-        let r = Rect::from_min_size(bar.min + vec2(20.0, 4.0 + i * (HEIGHT - 8.0)), vec2(bar.width() - 40.0, HEIGHT - 8.0));
+        let r = Rect::from_min_size(bar.min + vec2(16.0, 4.0 + i * (HEIGHT - 8.0)), vec2(bar.width() - 32.0, HEIGHT - 8.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center)));
         c.spacing_mut().item_spacing.x = 4.0;
         c

@@ -196,7 +196,6 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     });
     divider(ui);
     // mask list
-    // (the mask rows run wider than the panel's 24 / 22 pt margins; the header keeps them)
     egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: 16, top: 8, bottom: 8 }).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::tr("Masks")).font(t.semibold(13.0)).color(t.text_label));
@@ -294,8 +293,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 // right under the selected mask: ＋ adds to it, − takes away from it (any mask
                 // type; Describe… opens its field here)
                 ui.horizontal(|ui| {
-                    // under the mask's name
-                    ui.add_space(32.0);
+                    ui.add_space(30.0);
                     let plus = text_button(ui, &format!("maskPlus:{}", m.id), "+", false).on_hover_text(crate::i18n::tr("Add to this mask"));
                     egui::Popup::menu(&plus).show(|ui| component_menu(app, ui, "add"));
                     let minus = text_button(ui, &format!("maskMinus:{}", m.id), "−", false).on_hover_text(crate::i18n::tr("Subtract from this mask"));
@@ -304,10 +302,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
                 describe_field(app, ui, false);
             }
         }
+        if !d.masks.is_empty() {
+            ui.add_space(6.0);
+            overlay_options(app, ui);
+        }
     });
-    if !d.masks.is_empty() {
-        overlay_options(app, ui);
-    }
     let Some(mid) = app.session.active_mask else { return };
     let Some(m) = d.masks.iter().find(|m| m.id == mid).cloned() else { return };
     divider(ui);
@@ -463,38 +462,34 @@ fn overlay_options(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     use lightcraft_pipeline::MaskView;
     let t = Tokens::get(ui.ctx());
     let view = MaskView::parse(&app.ui.mask_overlay_mode).unwrap_or_default();
-    let colored = matches!(view, MaskView::Color | MaskView::ColorOnBw);
-    // the panel's 24 / 22 pt margins (the slider has them built in)
-    let margins = egui::Margin { left: 24, right: 22, top: 0, bottom: 0 };
-    egui::Frame::NONE.inner_margin(margins).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr("Overlay")).color(t.text_dim));
-            let r = crate::widgets::dropdown(ui, "maskOverlayMode", menu_label(view.label()), t.font(12.5), t.text_label);
-            egui::Popup::menu(&r).show(|ui| {
-                for v in MaskView::ALL {
-                    if ui.selectable_label(v == view, menu_label(v.label())).clicked() {
-                        let _ = app.run("view.maskOverlayMode", json!({"mode": v.name()}));
-                    }
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(crate::i18n::tr("Overlay")).color(t.text_dim));
+        let r = crate::widgets::dropdown(ui, "maskOverlayMode", menu_label(view.label()), t.font(12.5), t.text_label);
+        egui::Popup::menu(&r).show(|ui| {
+            for v in MaskView::ALL {
+                if ui.selectable_label(v == view, menu_label(v.label())).clicked() {
+                    let _ = app.run("view.maskOverlayMode", json!({"mode": v.name()}));
                 }
-            });
+            }
         });
-        if colored {
-            ui.horizontal(|ui| {
-                for c in OVERLAY_COLORS {
-                    let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
-                    crate::widgets::announce(&resp, format!("{} #{:02x}{:02x}{:02x}", crate::i18n::tr("Overlay color"), c[0], c[1], c[2]));
-                    register(ui, format!("maskOverlayColor:{:02x}{:02x}{:02x}", c[0], c[1], c[2]), r);
-                    ui.painter().rect_filled(r.shrink(2.0), 3.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
-                    if app.ui.mask_overlay_color == c {
-                        ui.painter().rect_stroke(r, 3.0, Stroke::new(1.5, t.text), egui::StrokeKind::Inside);
-                    }
-                    if resp.clicked() {
-                        let _ = app.run("view.maskOverlayColor", json!({"color": c}));
-                    }
-                }
-            });
-        }
     });
+    let colored = matches!(view, MaskView::Color | MaskView::ColorOnBw);
+    if colored {
+        ui.horizontal(|ui| {
+            for c in OVERLAY_COLORS {
+                let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+                crate::widgets::announce(&resp, format!("{} #{:02x}{:02x}{:02x}", crate::i18n::tr("Overlay color"), c[0], c[1], c[2]));
+                register(ui, format!("maskOverlayColor:{:02x}{:02x}{:02x}", c[0], c[1], c[2]), r);
+                ui.painter().rect_filled(r.shrink(2.0), 3.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
+                if app.ui.mask_overlay_color == c {
+                    ui.painter().rect_stroke(r, 3.0, Stroke::new(1.5, t.text), egui::StrokeKind::Inside);
+                }
+                if resp.clicked() {
+                    let _ = app.run("view.maskOverlayColor", json!({"color": c}));
+                }
+            }
+        });
+    }
     let spec = ControlSpec {
         id: "ui.maskOverlayOpacity",
         label: "Opacity",
@@ -510,12 +505,10 @@ fn overlay_options(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     if let Some(v) = out.value {
         app.ui.mask_overlay_opacity = v as f32;
     }
-    egui::Frame::NONE.inner_margin(egui::Margin { bottom: 8, ..margins }).show(ui, |ui| {
-        let mut pins = app.ui.mask_pins;
-        if ui.checkbox(&mut pins, crate::i18n::tr("Show Pins")).changed() {
-            let _ = app.run("view.maskPins", json!({"show": pins}));
-        }
-    });
+    let mut pins = app.ui.mask_pins;
+    if ui.checkbox(&mut pins, crate::i18n::tr("Show Pins")).changed() {
+        let _ = app.run("view.maskPins", json!({"show": pins}));
+    }
     if app.ui.mask_pins {
         super::right::tool_overlay_options(app, ui);
     }
