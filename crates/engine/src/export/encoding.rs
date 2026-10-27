@@ -1,10 +1,11 @@
 use super::options::{ExportFormat, MetadataPolicy, SharpenAmount, SharpenFor};
 use super::watermark::{Watermark, draw_watermark, draw_watermark_deep};
 use super::*;
+use std::borrow::Cow;
 
 /// Unsharp mask on an 8-bit image (separable box-blur approximation of a small Gaussian).
 pub fn output_sharpen(img: &mut Rgba8, target: SharpenFor, amount: SharpenAmount) {
-    if target == SharpenFor::None {
+    if !sharpens(img.width, img.height, target) {
         return;
     }
     let src: Vec<[f32; 3]> = img.data.iter().map(|p| [p[0] as f32, p[1] as f32, p[2] as f32]).collect();
@@ -19,10 +20,10 @@ pub fn output_sharpen(img: &mut Rgba8, target: SharpenFor, amount: SharpenAmount
 
 /// [`output_sharpen`] on a high-bit-depth image (float images are sharpened in linear light).
 pub fn output_sharpen_deep(img: &mut DeepImage, target: SharpenFor, amount: SharpenAmount) {
-    if target == SharpenFor::None {
+    let (w, h) = (img.width, img.height);
+    if !sharpens(w, h, target) {
         return;
     }
-    let (w, h) = (img.width, img.height);
     match &mut img.samples {
         DeepSamples::U16(v) => {
             let src: Vec<[f32; 3]> = v.as_chunks::<3>().0.iter().map(|c| [c[0] as f32, c[1] as f32, c[2] as f32]).collect();
@@ -41,6 +42,11 @@ pub fn output_sharpen_deep(img: &mut DeepImage, target: SharpenFor, amount: Shar
             }
         }
     }
+}
+
+/// Whether output sharpening for `target` changes a `w × h` image ([`unsharp`] returns `None` otherwise).
+fn sharpens(w: usize, h: usize, target: SharpenFor) -> bool {
+    target != SharpenFor::None && w >= 3 && h >= 3
 }
 
 /// The sharpened values of `src` (`w × h`), or `None` when nothing is to be done.
@@ -63,8 +69,9 @@ fn unsharp(w: usize, h: usize, src: &[[f32; 3]], target: SharpenFor, amount: Sha
     let r = radius as isize;
     let box_pass = |inp: &[[f32; 3]], horizontal: bool| -> Vec<[f32; 3]> {
         let mut out = vec![[0.0; 3]; inp.len()];
-        for y in 0..h {
-            for x in 0..w {
+        // rows in parallel: each output pixel is computed on its own, so the bits don't depend on the split
+        lightcraft_raster::par_rows(&mut out, w, |y, row| {
+            for (x, o) in row.iter_mut().enumerate() {
                 let mut acc = [0.0f32; 3];
                 for d in -r..=r {
                     let (sx, sy) = if horizontal {
@@ -76,9 +83,9 @@ fn unsharp(w: usize, h: usize, src: &[[f32; 3]], target: SharpenFor, amount: Sha
                     acc = [acc[0] + p[0], acc[1] + p[1], acc[2] + p[2]];
                 }
                 let n = (2 * r + 1) as f32;
-                out[y * w + x] = acc.map(|v| v / n);
+                *o = acc.map(|v| v / n);
             }
-        }
+        });
         out
     };
     let blur = box_pass(&box_pass(src, true), false);
@@ -94,10 +101,8 @@ pub fn encode_image(img: &Rgba8, o: &ExportOptions) -> Result<Vec<u8>, String> {
 
 /// Like [`encode_image`], embedding `meta` (already filtered by the policy) as EXIF + XMP.
 pub fn encode_with_metadata(img: &Rgba8, o: &ExportOptions, meta: Option<&Metadata>) -> Result<Vec<u8>, String> {
+    let img = finish_8bit(img, o);
     let space = o.effective_space();
-    // a copy only to sharpen or watermark (a full-size 8-bit image is 4 bytes a pixel)
-    let edited = (o.sharpen != SharpenFor::None || o.watermark.is_some()).then(|| finish_8bit(img, o));
-    let img = edited.as_ref().unwrap_or(img);
     let profile = icc::write_named(named_space(space));
     let exif = meta.map(lightcraft_meta::write_exif);
     let xmp = meta.map(|m| lightcraft_meta::write_xmp(m, None));
@@ -109,7 +114,7 @@ pub fn encode_with_metadata(img: &Rgba8, o: &ExportOptions, meta: Option<&Metada
     .then(|| img.data.iter().flat_map(|p| p.iter().take(3).copied()).collect());
     let e = match &rgb {
         Some(data) => EncodeImage::new(img.width as u32, img.height as u32, 3, Samples::U8(data)),
-        None => EncodeImage::rgba8(img),
+        None => EncodeImage::rgba8(&img),
     };
     let r = match o.format {
         ExportFormat::Jpeg => {
@@ -150,8 +155,12 @@ fn encode_jpeg_with_limit(o: &ExportOptions, jpeg: impl Fn(u8) -> lightcraft_cod
     best.ok_or_else(|| format!("cannot fit within {kb} KB"))
 }
 
-/// Output sharpening and the watermark on an 8-bit render in `o.effective_space()`.
-fn finish_8bit(img: &Rgba8, o: &ExportOptions) -> Rgba8 {
+/// Output sharpening and the watermark on an 8-bit render in `o.effective_space()`: the render itself when
+/// there is neither (a copy is ~100 MB at 24 MP).
+fn finish_8bit<'a>(img: &'a Rgba8, o: &ExportOptions) -> Cow<'a, Rgba8> {
+    if o.watermark.is_none() && !sharpens(img.width, img.height, o.sharpen) {
+        return Cow::Borrowed(img);
+    }
     let mut img = img.clone();
     output_sharpen(&mut img, o.sharpen, o.sharpen_amount);
     let space = o.effective_space();
@@ -159,18 +168,21 @@ fn finish_8bit(img: &Rgba8, o: &ExportOptions) -> Rgba8 {
         let wm = Watermark { color: srgb8_in(space, wm.color), target: Some(space), ..wm.clone() };
         draw_watermark(&mut img, &wm);
     }
-    img
+    Cow::Owned(img)
 }
 
-/// Output sharpening and the watermark on a high-bit-depth render.
-fn finish_deep(img: &DeepImage, o: &ExportOptions) -> DeepImage {
+/// Output sharpening and the watermark on a high-bit-depth render (the render itself when there is neither).
+fn finish_deep<'a>(img: &'a DeepImage, o: &ExportOptions) -> Cow<'a, DeepImage> {
+    if o.watermark.is_none() && !sharpens(img.width, img.height, o.sharpen) {
+        return Cow::Borrowed(img);
+    }
     let mut img = img.clone();
     output_sharpen_deep(&mut img, o.sharpen, o.sharpen_amount);
     if let Some(wm) = &o.watermark {
         let wm = Watermark { color: srgb8_in(img.space, wm.color), target: Some(img.space), ..wm.clone() };
         draw_watermark_deep(&mut img, &wm);
     }
-    img
+    Cow::Owned(img)
 }
 
 /// Encode an ISO 21496-1 gain map JPEG from the SDR rendition `sdr` (8-bit, in the output space)
