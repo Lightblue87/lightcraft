@@ -154,3 +154,7 @@ photos. `xtask` = tooling (`ci`, `layers`, `assets`, `parity`, `wasm`, `corpus`,
 `nix/package.nix` = the Nix package (`nix build` builds both binaries with the craft-fonts input, installs the
 desktop file/icons/AppStream metadata and runs `cargo test --workspace`; `nix develop` = dev shell). Community-maintained; CI only
 evaluates it (`.github/workflows/nix.yml`), so the build may lag behind the workspace; see README → Quick start.
+
+## Private iOS / AltStore fork (`ios-altstore` branch)
+Work on the unsigned iPhone build for AltStore Classic follows `apps/lightcraft-mobile/CLAUDE.md` (German) in
+addition to everything above; its status is in `apps/lightcraft-mobile/docs/ios-status.md`.

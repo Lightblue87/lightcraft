@@ -18,6 +18,8 @@ The rest of the workspace builds this crate empty. It only has code for `target_
 rustup target add aarch64-apple-ios-sim aarch64-linux-android
 apps/lightcraft-mobile/scripts/ios-sim.sh            # booted simulator, or pass a device name/UDID
 apps/lightcraft-mobile/scripts/ios-device.sh UDID…    # iPhone/iPad: signed, with the icon (see the script for its IOS_* variables)
+apps/lightcraft-mobile/scripts/ios-ipa.sh            # unsigned .ipa for AltStore & co. (CI: .github/workflows/ios-ipa.yml)
+apps/lightcraft-mobile/scripts/verify-ipa.py X.ipa   # checks it: device arm64 binary, Info.plist, no signing material
 apps/lightcraft-mobile/scripts/android-apk.sh --run  # builds the APK; --run installs and starts it via adb
 ```
 

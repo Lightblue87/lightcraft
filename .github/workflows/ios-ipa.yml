@@ -1,0 +1,126 @@
+name: iOS IPA (unsigned, for AltStore)
+
+# Builds an UNSIGNED iPhone/iPad .ipa of apps/lightcraft-mobile for private sideloading with
+# AltStore Classic (or AltServer / SideStore), which sign it with the user's own Apple ID at install
+# time. No certificates, provisioning profiles, Apple IDs or other secrets are used. Started by hand
+# (Actions ▸ iOS IPA ▸ Run workflow); the .ipa is a workflow artifact, never a release.
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner image
+        default: macos-latest
+        type: string
+      bundle_id:
+        description: CFBundleIdentifier (keep it the same between builds so installs update)
+        default: local.lightcraft.ios
+        type: string
+      xcode:
+        description: Xcode to select, e.g. 26.0 (empty = the image's default)
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the build number is the commit count, which needs the history
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode
+        if: inputs.xcode != ''
+        env:
+          XCODE: ${{ inputs.xcode }}
+        run: |
+          app="/Applications/Xcode_${XCODE}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Xcode $XCODE is not on this runner. Installed:"; ls -d /Applications/Xcode*.app; exit 1
+          fi
+          sudo xcode-select -s "$app"
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt --target aarch64-apple-ios
+          rustup default stable
+          {
+            echo "### Toolchain"
+            echo '```'
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version | sed 's/^/iphoneos SDK /'
+            rustc --version
+            cargo --version
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ios-ipa-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ios-ipa-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Layering
+        run: cargo xtask layers
+
+      - name: Clippy (iOS device target)
+        run: cargo clippy --release -p lightcraft-mobile --bin lightcraft-ios --target aarch64-apple-ios -- -D warnings
+
+      - name: Build unsigned IPA
+        id: build
+        run: |
+          set -o pipefail
+          apps/lightcraft-mobile/scripts/ios-ipa.sh | tee ipa-path.txt
+          ipa=$(tail -n 1 ipa-path.txt)
+          [ -s "$ipa" ] || { echo "::error::ios-ipa.sh printed '$ipa', which is no file"; exit 1; }
+          echo "ipa=$ipa" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$ipa" .ipa)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify IPA
+        env:
+          IPA: ${{ steps.build.outputs.ipa }}
+        run: |
+          python3 -I apps/lightcraft-mobile/scripts/verify-ipa.py "$IPA" --bundle-id "$IOS_BUNDLE_ID" --json dist/ios/verify.json
+          {
+            echo "### IPA"
+            echo "Commit \`$GITHUB_SHA\`, artifact \`${{ steps.build.outputs.name }}\`"
+            echo '```json'
+            cat dist/ios/verify.json
+            echo '```'
+            echo "Not yet proven by this run: installation through AltStore and behaviour on a real iPhone."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.name }}
+          path: |
+            dist/ios/*.ipa
+            dist/ios/*.dSYM.zip
+            dist/ios/verify.json
+          if-no-files-found: error
+          retention-days: 30
+          # an .ipa is already a zip
+          compression-level: 0
