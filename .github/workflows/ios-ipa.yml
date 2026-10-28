@@ -21,7 +21,7 @@ on:
         # if jobs sit queued and get cancelled ("not acquired by Runner"), the arm64 macOS pool is
         # full: run again later or pick another image here
         description: macOS runner image
-        default: macos-latest
+        default: macos-15-intel
         type: string
       bundle_id:
         description: CFBundleIdentifier (keep it the same between builds so installs update)
@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   ipa:
-    runs-on: ${{ inputs.runner || 'macos-latest' }}
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 90
     env:
       CARGO_TERM_COLOR: always
