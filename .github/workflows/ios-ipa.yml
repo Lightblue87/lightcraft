@@ -18,6 +18,8 @@ on:
   workflow_dispatch:
     inputs:
       runner:
+        # if jobs sit queued and get cancelled ("not acquired by Runner"), the arm64 macOS pool is
+        # full: run again later or pick another image here
         description: macOS runner image
         default: macos-latest
         type: string
