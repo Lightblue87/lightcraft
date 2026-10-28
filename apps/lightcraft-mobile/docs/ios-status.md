@@ -93,6 +93,7 @@ Nur Ausgeführtes abhaken.
 - [ ] IPA aus GitHub Actions geladen (Commit: ____)
 - [ ] In AltStore Classic installiert (iPhone-Modell / iOS-Version: ____; Fehlertext: ____)
   - 28.10.2026, 19:40: Versuch 1 über Remote AltServer fehlgeschlagen, `AltStore.OperationError 1500` „AltStore couldn't reach the remote AltServer“ (Verbindungsfehler WLAN/LocalDevVPN, vor jeder Verarbeitung der IPA; sagt nichts über die IPA)
+  - 28.10.2026, 19:46: Versuch 2 erreicht den Server, scheitert aber an der Apple-Anmeldung: `AltStore.AppleDeveloperError 3000`, HTTP 503 von Apples Authentifizierungsservern (Apple-Störung oder Rate-Limit; ebenfalls vor dem Signieren)
 - [ ] Start, Icon, Katalog, Hoch-/Querformat
 - [ ] JPEG importiert, Regler ändern das Bild
 - [ ] HEIC importiert (Konvertierung nach JPEG dokumentiert)
