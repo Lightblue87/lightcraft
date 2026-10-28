@@ -9,7 +9,7 @@ Ehrliche Übersicht, was gebaut, geprüft und offen ist. Begriffe strikt getrenn
 |---|---|
 | Basis | `fmsouza/lightcraft` Branch `mobile-apps`, Commit `476e55b9` (27.10.2026, Merge von upstream/main) |
 | Upstream-PR | storytold/lightcraft#818 – am 28.10.2026 **offen**, kein Merge; laut PR „rebased branch has not been run on a device yet“ |
-| Arbeitsbranch | `ios-altstore` (nur lokal, noch nicht gepusht) |
+| Arbeitsbranch | `ios-altstore` in `Lightblue87/lightcraft` (Fork, öffentlich, Standard-Branch) |
 | Bundle-ID (eigen, stabil) | `local.lightcraft.ios` (Upstream-Default `ai.storyteller.lightcraft.mobile` bleibt für `ios-device.sh`) |
 | Version | `CFBundleShortVersionString` = Workspace-Version (0.14.0), `CFBundleVersion` = Commit-Anzahl, Commit als `LCBuildCommit` in der Info.plist |
 
@@ -52,20 +52,33 @@ dieser Sitzung **nicht ausgeführt** (Kompilieren fremden Codes war in der Sitzu
 | `actionlint` (inkl. shellcheck) auf `ios-ipa.yml` | ✅ ohne Befund |
 | `verify-ipa.py` gegen 9 synthetische IPAs (gültig; Simulator-Binary; x86-CPU; Deployment-Target zu hoch; ohne Scene-Manifest; mit `embedded.mobileprovision`; mit Private Key; ohne Ausführungsrecht; zwei Apps) | ✅ gültige besteht, alle 8 fehlerhaften werden mit passender Meldung abgelehnt |
 | Versions-Extraktion aus `Cargo.toml` | ✅ `0.14.0` |
-| `cargo fmt/clippy/build` für `aarch64-apple-ios` | ❌ **nicht gelaufen** (siehe oben) |
-| macOS-Build / echte IPA | ❌ **nicht gelaufen** – Branch ist noch nicht in einem GitHub-Repo mit Actions |
+| `cargo fmt/clippy/build` für `aarch64-apple-ios` lokal | ❌ nicht gelaufen (siehe oben); in CI siehe unten |
 
-### Ergebnis
-**Es existiert noch keine echte IPA.** Meilenstein A ist erst erfüllt, wenn ein Actions-Run grün ist und das
-Artefakt herunterladbar ist.
+### CI-Läufe (`Lightblue87/lightcraft`, Workflow „iOS IPA“)
+| Lauf | Commit | Runner | Ergebnis |
+|---|---|---|---|
+| 40729960388 | `d42d31ee` | macos-latest (arm64) | abgebrochen: 15 min kein Runner zugeteilt (GitHub-Kapazität), kein Schritt lief |
+| 2. Lauf | `02520a94` | macos-latest (arm64) | ebenso abgebrochen |
+| [40735026283](https://github.com/Lightblue87/lightcraft/actions/runs/40735026283) | `55833e89` | **macos-15-intel** | ✅ **grün**, 36 min |
 
-Nicht belegte Annahmen, die der erste CI-Lauf klärt:
-- `macos-latest` hat ein Xcode, dessen `actool` den Asset-Katalog für `iphoneos` kompiliert (bei
-  Simulator/Device lokal bei fmsouza belegt, auf dem Runner nicht).
-- `cargo fmt --all --check` und Clippy `-D warnings` für das iOS-Target sind auf dem Branch-Stand grün
-  (Upstream-CI prüft das iOS-Target nicht). Schlägt das fehl, ist der Befund der erste Fix.
-- AltStore akzeptiert eine IPA, deren Binary nur die vom Linker gesetzte Ad-hoc-Signatur trägt (Normalfall bei
-  unsignierten CI-IPAs, aber erst mit dem Gerätetest belegt).
+Im grünen Lauf (28.10.2026) ausgeführt: `cargo fmt --all --check` ✅, `cargo xtask layers` ✅,
+`cargo clippy --release -p lightcraft-mobile --target aarch64-apple-ios -- -D warnings` ✅, Release-Build ✅,
+`verify-ipa.py` ✅. Umgebung: Xcode 16.4, iphoneos SDK 18.5, rustc 1.99.1 (x86_64-Host, Cross-Build nach arm64).
+
+### Ergebnis – Meilenstein A erreicht (gebaut, nicht installiert)
+Artefakt `LightCraft-iOS-0.14.0-4154-55833e895540-unsigned` (30 Tage im Run):
+- `LightCraft-iOS-0.14.0-4154-55833e895540-unsigned.ipa`, 26,8 MB, SHA-256
+  `3858d14ec27a3e0e64c1ff6febdb34f89c87569ef80384fdfc6238d0847b5947` (lokal nachgeprüft: IPA OK)
+- Inhalt: `Payload/LightCraft.app/` mit `lightcraft-ios` (76,6 MB, arm64, Plattform iOS, minOS 17.0, ohne
+  Signatur), `Info.plist`, `Assets.car`, zwei Icon-PNGs. Keine Usage-Descriptions, keine Profile.
+- Bundle-ID `local.lightcraft.ios`, Version 0.14.0 (Build 4154), `LCBuildCommit` 55833e895540.
+- Kein dSYM-Zip: cargo erzeugt mit `debug = "line-tables-only"` für iOS kein `.dSYM`; die Zeilentabellen stecken
+  im Binary.
+
+Weiterhin **nicht belegt**: dass AltStore die IPA ohne jede Signatur annimmt und signiert, und dass die App auf
+einem echten iPhone startet. Das gebaute SDK ist iOS 18.5 (Xcode 16.4 auf dem Intel-Image); die App läuft
+damit auch auf neueren iOS-Versionen, nutzt aber keine neueren SDK-Funktionen. Für iOS 27 ist das UIScene-Manifest
+entscheidend, und es ist enthalten.
 
 ## Offene Risiken
 - winit 0.30 ohne UIScene: die Shell-Lösung ist nur auf Simulatoren (iOS 26.5/27.0) belegt.
@@ -92,5 +105,5 @@ Nur Ausgeführtes abhaken.
 - [ ] Refresh nach 7 Tagen
 
 ## Nächster Schritt
-Branch `ios-altstore` in einen eigenen GitHub-Fork pushen und den Workflow **iOS IPA** starten. Ein
-fehlgeschlagener Lauf liefert den konkreten Blocker (Log); ein grüner Lauf liefert die IPA für Phase 2.
+Phase 2: die IPA aus Lauf 40735026283 per AltStore Classic installieren (`altstore-installation.md`) und
+Ergebnis, iPhone-Modell, iOS-Version sowie etwaige AltStore-Fehlertexte oder Absturzberichte hier eintragen.
