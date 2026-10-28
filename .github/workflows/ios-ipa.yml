@@ -3,8 +3,18 @@ name: iOS IPA (unsigned, for AltStore)
 # Builds an UNSIGNED iPhone/iPad .ipa of apps/lightcraft-mobile for private sideloading with
 # AltStore Classic (or AltServer / SideStore), which sign it with the user's own Apple ID at install
 # time. No certificates, provisioning profiles, Apple IDs or other secrets are used. Started by hand
-# (Actions ▸ iOS IPA ▸ Run workflow); the .ipa is a workflow artifact, never a release.
+# (Actions ▸ iOS IPA ▸ Run workflow), or by a push to the ios-altstore branch that touches the mobile
+# app or a crate; the .ipa is a workflow artifact, never a release.
 on:
+  push:
+    branches: [ios-altstore]
+    paths:
+      - "apps/lightcraft-mobile/**"
+      - "crates/**"
+      - "assets/app-icon/ios/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ios-ipa.yml"
   workflow_dispatch:
     inputs:
       runner:
@@ -29,12 +39,12 @@ concurrency:
 
 jobs:
   ipa:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 90
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: "0"
-      IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
+      IOS_BUNDLE_ID: ${{ inputs.bundle_id || 'local.lightcraft.ios' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode
-        if: inputs.xcode != ''
+        if: inputs.xcode != '' && inputs.xcode != null
         env:
           XCODE: ${{ inputs.xcode }}
         run: |
